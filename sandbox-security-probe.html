@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Generated App Sandbox Security Probe</title>
+    <style>
+      html, body, #root { margin: 0; width: 100%; height: 100%; }
+      #root { min-height: 100%; }
+      .probe-shell { display: flex; flex-direction: column; gap: 12px; min-height: 100%; padding: 16px; box-sizing: border-box; background: #f6f8fa; }
+      .probe-result { margin: 0; padding: 12px; border: 1px solid #d0d7de; background: #fff; color: #24292f; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+      .probe-canvas { min-height: 240px; height: 420px; border: 1px solid #d0d7de; background: #fff; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React, { useCallback, useState } from 'react'
+      import { createRoot } from 'react-dom/client'
+      import { GeneratedAppPreviewCanvas } from '/src/modules/func-operation/GeneratedAppPreviewCanvas.tsx'
+
+      const appId = 'sandbox-security-probe'
+      const frontendSource = `
+export async function render(root, context) {
+  const result = {};
+  try { parent.document.body; result.parentDom = 'allowed'; } catch { result.parentDom = 'blocked'; }
+  try { sessionStorage.getItem('ai-dandelion-auth'); result.sessionStorage = 'allowed'; } catch { result.sessionStorage = 'blocked'; }
+  const networkResult = await Promise.race([
+    fetch('/sandbox-security-probe-network').then(() => 'allowed').catch(() => 'blocked'),
+    new Promise((resolve) => setTimeout(() => resolve('blocked'), 250)),
+  ]);
+  result.network = networkResult;
+  try { result.invokeData = await context.invokeData(); } catch (error) { result.invokeData = String(error && error.message || error); }
+  try { await context.invoke('another-generated-app'); result.crossApp = 'allowed'; } catch { result.crossApp = 'blocked'; }
+  root.textContent = JSON.stringify(result);
+}
+`
+
+      sessionStorage.setItem('ai-dandelion-auth', JSON.stringify({ token: 'sandbox-probe-token' }))
+      const originalFetch = window.fetch.bind(window)
+      let sourceAuthorization = ''
+      window.fetch = async (input, init = {}) => {
+        const url = String(input)
+        if (url.includes(`/func-operation/generated-apps/${appId}/frontend.js`)) {
+          sourceAuthorization = new Headers(init.headers).get('Authorization') || ''
+          return new Response(frontendSource, {
+            status: 200,
+            headers: { 'Content-Type': 'text/javascript; charset=utf-8' },
+          })
+        }
+        return originalFetch(input, init)
+      }
+
+      function Probe() {
+        const [hostState, setHostState] = useState({ authorization: '', invokedAppId: '', previewError: '' })
+        const runFunction = useCallback(async (requestedAppId) => {
+          setHostState((current) => ({ ...current, invokedAppId: requestedAppId, authorization: sourceAuthorization }))
+          return {
+            appId: requestedAppId,
+            version: 'probe',
+            export: 'handle',
+            result: 0,
+            response: { ok: true, source: 'controlled-host-bridge' },
+            duration: '0s',
+            runtime: 'probe',
+            moduleLen: 0,
+            backendSource: 'probe',
+            backendModule: 'probe.wasm',
+          }
+        }, [])
+        return React.createElement('main', { className: 'probe-shell' }, [
+          React.createElement('pre', { className: 'probe-result', id: 'host-result', key: 'host' }, JSON.stringify(hostState)),
+          React.createElement(GeneratedAppPreviewCanvas, {
+            key: 'canvas',
+            app: {
+              id: appId,
+              name: 'Sandbox security probe',
+              version: 'probe',
+              description: 'Development-only security probe',
+              export: 'handle',
+              frontendEntry: `/func-operation/generated-apps/${appId}/frontend.js`,
+              backendSource: 'probe',
+              backendModule: 'probe.wasm',
+              tablePrefix: '',
+              createdAt: 0,
+              updatedAt: 1,
+            },
+            enabled: true,
+            renderKey: 'security-probe',
+            className: 'probe-canvas',
+            runFunction,
+            onErrorChange: (error) => setHostState((current) => ({ ...current, previewError: error ? error.message : '' })),
+          }),
+        ])
+      }
+
+      createRoot(document.getElementById('root')).render(React.createElement(Probe))
+    </script>
+  </body>
+</html>

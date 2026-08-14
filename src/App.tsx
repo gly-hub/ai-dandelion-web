@@ -1,0 +1,312 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { App as AntApp, Avatar, Badge, Button, Empty, List, Popover, Space, Spin, Tag, Tooltip } from 'antd'
+import { BellOutlined, LogoutOutlined, MessageOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { XProvider } from '@ant-design/x'
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import type { CSSProperties } from 'react'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { TabNavigationProvider } from './contexts/TabNavigationContext'
+import { NavMenuProvider, useNavMenus } from './contexts/NavMenuContext'
+import { LoginPage } from './modules/system/LoginPage'
+import { AiAgentWorkspace } from './modules/ai-agent/AiAgentWorkspace'
+import { FuncOperationWorkspace } from './modules/func-operation/FuncOperationWorkspace'
+import { ensureRealtimeConnection, subscribeRealtimeEvents } from './lib/aiAgentProvider'
+import { listSystemNotifications, normalizeSystemNotification, readSystemNotification } from './lib/systemApi'
+import type { SystemNotification } from './types'
+import { buildFuncAdminPath, buildFuncPublishedPath, getModuleFromPath, isFuncEditorImmersivePath, ROUTES } from './lib/routes'
+import './App.css'
+import './console-prototype.css'
+import './workspace-shell.css'
+import './modules/func-operation/FuncAdminList.css'
+
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { currentUser, loading } = useAuth()
+  const location = useLocation()
+
+  if (loading) {
+    return null
+  }
+  if (!currentUser) {
+    return <Navigate to={ROUTES.login} replace state={{ from: location.pathname }} />
+  }
+  return children
+}
+
+function DefaultModuleRedirect() {
+  const { loading, navTree } = useNavMenus()
+
+  if (loading) {
+    return (
+      <div className="console-no-access">
+        <Spin size="large" />
+      </div>
+    )
+  }
+
+  if (navTree.length === 0) {
+    return (
+      <div className="console-no-access">
+        <Empty description="暂无可用模块权限，请联系管理员分配角色" />
+      </div>
+    )
+  }
+
+  return <Navigate to={buildFuncPublishedPath()} replace />
+}
+
+function ConsoleAppContent() {
+  const { currentUser, logout } = useAuth()
+  const { message: toastMessage, modal } = AntApp.useApp()
+  const { loading, navTree } = useNavMenus()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const activeModule = getModuleFromPath(location.pathname)
+  const immersiveFuncEditor = isFuncEditorImmersivePath(location.pathname)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [notifications, setNotifications] = useState<SystemNotification[]>([])
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
+  const handledNotificationIdsRef = useRef(new Set<string>())
+  const handledNotificationEventsRef = useRef(new Set<string>())
+  const [viewportSize, setViewportSize] = useState(() => getViewportSize())
+  const immersiveViewportStyle = useMemo<ImmersiveViewportStyle | undefined>(() => {
+    if (!immersiveFuncEditor) {
+      return undefined
+    }
+
+    return {
+      width: `${viewportSize.width}px`,
+      height: `${viewportSize.height}px`,
+      '--immersive-viewport-width': `${viewportSize.width}px`,
+      '--immersive-viewport-height': `${viewportSize.height}px`,
+    }
+  }, [immersiveFuncEditor, viewportSize.height, viewportSize.width])
+
+  useEffect(() => {
+    if (loading || !activeModule || activeModule === 'func-operation') {
+      return
+    }
+    navigate(buildFuncPublishedPath(), { replace: true })
+  }, [activeModule, loading, navigate])
+
+  useLayoutEffect(() => {
+    if (!immersiveFuncEditor) {
+      return
+    }
+
+    function syncViewportSize() {
+      setViewportSize(getViewportSize())
+    }
+
+    syncViewportSize()
+    window.addEventListener('resize', syncViewportSize)
+    window.visualViewport?.addEventListener('resize', syncViewportSize)
+
+    return () => {
+      window.removeEventListener('resize', syncViewportSize)
+      window.visualViewport?.removeEventListener('resize', syncViewportSize)
+    }
+  }, [immersiveFuncEditor])
+
+  useEffect(() => {
+    if (!chatOpen) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setChatOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [chatOpen])
+
+  useEffect(() => {
+    if (!currentUser?.id) return undefined
+    void Promise.all([ensureRealtimeConnection(), listSystemNotifications({ page: 1, pageSize: 30 })])
+      .then(([, result]) => {
+        result.notifications.forEach((item) => handledNotificationIdsRef.current.add(item.id))
+        setNotifications(result.notifications)
+        setUnreadNotificationCount(result.unreadCount)
+      })
+      .catch(() => undefined)
+    return subscribeRealtimeEvents((event) => {
+      if (event.type !== 'system.notification') return
+      const notification = normalizeSystemNotification(event.payload)
+      if (!notification.id) return
+      if (event.eventId && handledNotificationEventsRef.current.has(event.eventId)) return
+      if (event.eventId) handledNotificationEventsRef.current.add(event.eventId)
+      if (handledNotificationIdsRef.current.has(notification.id)) return
+      handledNotificationIdsRef.current.add(notification.id)
+      setNotifications((current) => [notification, ...current.filter((item) => item.id !== notification.id)].slice(0, 30))
+      setUnreadNotificationCount((count) => count + 1)
+      if (notification.displayType === 'modal') {
+        modal.info({ title: notification.title, content: notification.content, okText: '知道了', onOk: () => { void readSystemNotification(notification.id); setUnreadNotificationCount((count) => Math.max(0, count - 1)); setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read: true } : item)) } })
+      } else {
+        const method = notification.level === 'success' ? toastMessage.success : notification.level === 'warning' ? toastMessage.warning : notification.level === 'error' ? toastMessage.error : toastMessage.info
+        method({ content: `${notification.title}：${notification.content}`, duration: 5 })
+      }
+    })
+  }, [currentUser?.id, modal, toastMessage])
+
+  function handleLogout() {
+    logout()
+    navigate(ROUTES.login, { replace: true })
+  }
+
+  const handleNotificationClick = (item: SystemNotification) => {
+    if (item.read) return
+    void readSystemNotification(item.id).catch(() => undefined)
+    setNotifications((current) => current.map((entry) => entry.id === item.id ? { ...entry, read: true } : entry))
+    setUnreadNotificationCount((count) => Math.max(0, count - 1))
+  }
+
+  return (
+    <div className="console-app">
+      <main className={`console-workspace${immersiveFuncEditor ? ' immersive-func-editor' : ''}`} style={immersiveViewportStyle}>
+        {immersiveFuncEditor ? null : (
+          <header className="workspace-topbar">
+            <div className="workspace-brand" aria-label="AiDandelion">
+              <img className="workspace-brand-logo" src="/ai-dandelion-logo.png" alt="AiDandelion" />
+            </div>
+            <div className="workspace-topbar-actions">
+              <Tooltip title="帮助中心"><Button type="text" shape="circle" icon={<QuestionCircleOutlined />} /></Tooltip>
+              <Tooltip title="打开 Agent 对话"><Button type="text" shape="circle" icon={<MessageOutlined />} onClick={() => setChatOpen(true)} /></Tooltip>
+              <Popover trigger="click" placement="bottomRight" title="通知" content={<div style={{ width: 360 }}><List size="small" dataSource={notifications} locale={{ emptyText: '暂无通知' }} renderItem={(item) => <List.Item onClick={() => handleNotificationClick(item)} style={{ cursor: item.read ? 'default' : 'pointer', opacity: item.read ? 0.65 : 1 }}><List.Item.Meta title={<Space size={6}><span>{item.title}</span>{!item.read ? <Tag color="blue">未读</Tag> : null}</Space>} description={<span>{item.content}</span>} /></List.Item>} /></div>}><Badge count={unreadNotificationCount} size="small"><Tooltip title="通知"><Button type="text" shape="circle" icon={<BellOutlined />} /></Tooltip></Badge></Popover>
+              <Popover
+                trigger="click"
+                placement="bottomRight"
+                content={(
+                  <div className="workspace-user-popover">
+                    <strong>{currentUser?.username || '用户'}</strong>
+                    <Button type="text" danger size="small" icon={<LogoutOutlined />} onClick={handleLogout}>退出登录</Button>
+                  </div>
+                )}
+              >
+                <Avatar className="workspace-user-avatar">{currentUser?.username?.slice(0, 1).toUpperCase() || 'U'}</Avatar>
+              </Popover>
+            </div>
+          </header>
+        )}
+
+        <section
+          className={`console-module${
+            activeModule === 'func-operation'
+              ? ` func-layout${immersiveFuncEditor ? ' func-immersive-layout' : ''}`
+              : ''
+          }`}
+        >
+          {loading ? (
+            <div className="console-no-access">
+              <Spin size="large" />
+            </div>
+          ) : navTree.length === 0 ? (
+            <div className="console-no-access">
+              <Empty description="暂无可用模块权限，请联系管理员分配角色" />
+              <Button type="primary" icon={<LogoutOutlined />} onClick={handleLogout}>
+                退出登录
+              </Button>
+            </div>
+          ) : (
+            <Outlet />
+          )}
+        </section>
+      </main>
+
+      {chatOpen ? (
+        <div
+          className="agent-chat-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setChatOpen(false)
+            }
+          }}
+        >
+          <section className="agent-chat-modal" role="dialog" aria-modal="true" aria-label="AI 对话">
+            <div className="agent-chat-modal-shell">
+              <button type="button" className="agent-chat-modal-close" aria-label="关闭 Agent 对话" onClick={() => setChatOpen(false)}>×</button>
+              <AiAgentWorkspace embedded />
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+type ImmersiveViewportStyle = CSSProperties & {
+  '--immersive-viewport-width': string
+  '--immersive-viewport-height': string
+}
+
+function getViewportSize() {
+  if (typeof window === 'undefined') {
+    return { width: 0, height: 0 }
+  }
+
+  return {
+    width: Math.max(0, Math.round(window.visualViewport?.width ?? window.innerWidth)),
+    height: Math.max(0, Math.round(window.visualViewport?.height ?? window.innerHeight)),
+  }
+}
+
+function ConsoleApp() {
+  return (
+    <TabNavigationProvider>
+      <ConsoleAppContent />
+    </TabNavigationProvider>
+  )
+}
+
+function LoginRoute() {
+  const { currentUser, loading } = useAuth()
+  const location = useLocation()
+
+  if (loading) {
+    return null
+  }
+  if (currentUser) {
+    const from = (location.state as { from?: string } | null)?.from
+    return <Navigate to={from && from !== ROUTES.login ? from : ROUTES.root} replace />
+  }
+  return <LoginPage />
+}
+
+function AuthenticatedShell() {
+  return (
+    <NavMenuProvider>
+      <ConsoleApp />
+    </NavMenuProvider>
+  )
+}
+
+function App() {
+  return (
+    <XProvider>
+      <AntApp>
+        <AuthProvider>
+          <Routes>
+            <Route path={ROUTES.login} element={<LoginRoute />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <AuthenticatedShell />
+                </RequireAuth>
+              }
+            >
+              <Route index element={<DefaultModuleRedirect />} />
+              <Route path="system/*" element={<Navigate to={buildFuncAdminPath('users')} replace />} />
+              <Route path="ai-agent/*" element={<Navigate to={buildFuncPublishedPath()} replace />} />
+              <Route path="func-operation/*" element={<FuncOperationWorkspace />} />
+            </Route>
+            <Route path="*" element={<Navigate to={ROUTES.root} replace />} />
+          </Routes>
+        </AuthProvider>
+      </AntApp>
+    </XProvider>
+  )
+}
+
+export default App
