@@ -1,0 +1,217 @@
+/* 功能列表使用独立的列和单元格语义，避免遗留通用 span 规则影响 Ant Design 控件。 */
+.console-app .func-admin-list-page {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 12px !important;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.console-app .func-admin-table-card {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #dbe7f4 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.console-app .func-admin-table {
+  width: 100%;
+  min-width: 1080px;
+  table-layout: fixed;
+}
+
+.console-app .func-admin-col-name { width: 20%; }
+.console-app .func-admin-col-directory { width: 15%; }
+.console-app .func-admin-col-progress { width: 15%; }
+.console-app .func-admin-col-status { width: 13%; }
+.console-app .func-admin-col-page { width: 10%; }
+.console-app .func-admin-col-updated { width: 13%; }
+.console-app .func-admin-col-actions { width: 172px; }
+
+.console-app .func-admin-table thead th {
+  height: 42px;
+  padding: 11px 14px !important;
+  border-bottom: 1px solid #dbe7f4 !important;
+  color: #64748b !important;
+  background: #f7faff !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-align: left;
+  text-transform: none !important;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.console-app .func-admin-table tbody tr {
+  height: 72px;
+  background: #fff;
+}
+
+.console-app .func-admin-table tbody tr:hover {
+  background: #f7fbff !important;
+}
+
+.console-app .func-admin-table tbody td {
+  padding: 12px 14px !important;
+  border-bottom: 1px solid #e8eff7 !important;
+  color: #334155;
+  font-size: 13px;
+  text-align: left;
+  vertical-align: middle !important;
+}
+
+.console-app .func-admin-table tbody tr:last-child td {
+  border-bottom: 0 !important;
+}
+
+.console-app .func-admin-table-name,
+.console-app .func-admin-table-directory,
+.console-app .func-admin-table-progress,
+.console-app .func-admin-table-status,
+.console-app .func-admin-table-page,
+.console-app .func-admin-table-updated {
+  min-width: 0;
+}
+
+.console-app .func-admin-table-function-name {
+  display: block;
+  overflow: hidden;
+  color: #1f3653 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  line-height: 20px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-app .func-admin-table-description {
+  display: block !important;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #8493a7 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-app .func-admin-table-value {
+  display: block !important;
+  overflow: hidden;
+  color: #53657b;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-app .func-admin-table .binding-status,
+.console-app .func-admin-table .function-status {
+  display: inline-flex !important;
+  align-items: center;
+  width: fit-content !important;
+  max-width: 100%;
+  min-height: 22px;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  line-height: 20px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-app .func-admin-table .binding-status {
+  color: #1f6fd1 !important;
+  background: #eaf3ff !important;
+}
+
+.console-app .func-admin-table-page-state {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  color: #68798d;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.console-app .func-admin-table-page-state::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a8b7c8;
+  content: '';
+}
+
+.console-app .func-admin-table-page-state.is-ready {
+  color: #16803c;
+}
+
+.console-app .func-admin-table-page-state.is-ready::before {
+  background: #25a45b;
+}
+
+.console-app .func-admin-table-actions {
+  display: table-cell !important;
+  width: 172px;
+  padding-right: 16px !important;
+  vertical-align: middle !important;
+  white-space: normal !important;
+}
+
+.console-app .func-admin-table-action-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.console-app .func-admin-table-actions .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  min-width: 0;
+  padding: 0 !important;
+  color: #426181 !important;
+  font-size: 13px;
+  font-weight: 500 !important;
+  line-height: 22px !important;
+}
+
+.console-app .func-admin-table-actions .ant-btn > span {
+  display: inline !important;
+  line-height: inherit !important;
+}
+
+.console-app .func-admin-table-actions .ant-btn:not(:disabled):hover,
+.console-app .func-admin-table-actions .ant-btn:not(:disabled):focus-visible {
+  color: #2477f5 !important;
+}
+
+.console-app .func-admin-table-actions .ant-btn-dangerous {
+  color: #d65b5b !important;
+}
+
+.console-app .func-admin-table-actions .ant-btn-dangerous:not(:disabled):hover,
+.console-app .func-admin-table-actions .ant-btn-dangerous:not(:disabled):focus-visible {
+  color: #c64343 !important;
+}
+
+@media (max-width: 820px) {
+  .console-app .func-admin-list-page {
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  .console-app .func-admin-table-card {
+    border-radius: 6px !important;
+  }
+}
