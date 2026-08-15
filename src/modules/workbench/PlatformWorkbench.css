@@ -33,7 +33,7 @@
 .platform-workbench-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .platform-workbench-section-heading span { color: #8191a2; font-size: 11px; }
 .platform-workbench-module-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.platform-workbench-module { display: flex; flex-direction: column; min-width: 0; min-height: 266px; padding: 16px; border: 1px solid var(--workspace-line); border-top-width: 3px; border-radius: 6px; background: #fff; }
+.platform-workbench-module { display: flex; flex-direction: column; min-width: 0; min-height: 228px; padding: 16px; border: 1px solid var(--workspace-line); border-top-width: 3px; border-radius: 6px; background: #fff; }
 .platform-workbench-module.is-function { border-top-color: #317ee2; }
 .platform-workbench-module.is-agent { border-top-color: #8a66c9; }
 .platform-workbench-module.is-system { border-top-color: #319670; }
@@ -48,8 +48,6 @@
 .platform-workbench-module li::before { position: absolute; top: 5px; left: 0; width: 4px; height: 4px; border-radius: 50%; background: #4a8ae0; content: ''; }
 .platform-workbench-module.is-agent li::before { background: #8a66c9; }
 .platform-workbench-module.is-system li::before { background: #319670; }
-.platform-workbench-module-result { margin: auto 0 0; padding-top: 11px; color: #496782; font-size: 10px; line-height: 1.45; }
-.platform-workbench-module .ant-btn-link { align-self: flex-start; height: 24px; margin-top: 4px; padding: 0; font-size: 11px; }
 .platform-workbench-unavailable { display: flex; align-items: center; gap: 7px; margin: 12px auto 0; padding: 9px 13px; border: 1px dashed #cfdae5; border-radius: 6px; color: #718399; background: #fbfcfd; font-size: 10px; line-height: 1.45; }
 
 @media (max-width: 1100px) {
