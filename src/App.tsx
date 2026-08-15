@@ -81,13 +81,6 @@ function ConsoleAppContent() {
     }
   }, [immersiveFuncEditor, viewportSize.height, viewportSize.width])
 
-  useEffect(() => {
-    if (loading || !activeModule || activeModule === 'func-operation') {
-      return
-    }
-    navigate(buildFuncPublishedPath(), { replace: true })
-  }, [activeModule, loading, navigate])
-
   useLayoutEffect(() => {
     if (!immersiveFuncEditor) {
       return
@@ -298,7 +291,7 @@ function App() {
             >
               <Route index element={<DefaultModuleRedirect />} />
               <Route path="system/*" element={<Navigate to={buildFuncAdminPath('users')} replace />} />
-              <Route path="ai-agent/*" element={<Navigate to={buildFuncPublishedPath()} replace />} />
+              <Route path="ai-agent/*" element={<AiAgentWorkspace />} />
               <Route path="func-operation/*" element={<FuncOperationWorkspace />} />
             </Route>
             <Route path="*" element={<Navigate to={ROUTES.root} replace />} />

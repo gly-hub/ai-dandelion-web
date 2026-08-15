@@ -6,6 +6,7 @@ import { SidebarSearchInput } from '../../components/SidebarSearchInput'
 import { useNavMenus } from '../../contexts/NavMenuContext'
 import { FuncEditorLayout } from './FuncEditorLayout'
 import './FuncEditorLayout.css'
+import { PlatformWorkbench } from '../workbench/PlatformWorkbench'
 import {
   FUNC_ADMIN_BUTTON,
   FUNC_ADMIN_PAGE,
@@ -29,13 +30,13 @@ import {
   buildFuncMenuViewKey,
   collectFuncUseDirectories,
   filterFuncSidebarMenus,
-  isFuncMenuViewKey,
   parseFuncMenuViewKey,
   resolveDirectoryLabel,
 } from '../../lib/funcMenus'
 import { listSystemMenus } from '../../lib/systemApi'
 import { useXChat } from '@ant-design/x-sdk'
 import {
+  AppstoreOutlined,
   LeftOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -491,6 +492,11 @@ export function FuncOperationWorkspace() {
     setActiveUserNavViewKey(viewKey)
   }
 
+  function openWorkspace() {
+    navigate(buildFuncPublishedPath())
+    setActiveUserNavViewKey(FUNC_USE_PAGE)
+  }
+
   function handleAdminNavSelect(viewKey: string) {
     setActiveAdminNavViewKey(viewKey)
     navigate(buildFuncAdminPath(viewKey))
@@ -523,20 +529,6 @@ export function FuncOperationWorkspace() {
       }
     }
   }, [location.pathname, route.adminViewKey, route.functionId, route.isEditor, route.mode, route.step])
-
-  useEffect(() => {
-    if (navLoading || route.mode !== 'published' || route.functionId) {
-      return
-    }
-    if (!isFuncMenuViewKey(activeUserNavViewKey)) {
-      return
-    }
-    const functionId = parseFuncMenuViewKey(activeUserNavViewKey)
-    if (!functionId) {
-      return
-    }
-    navigate(buildFuncPublishedPath(functionId), { replace: true })
-  }, [activeUserNavViewKey, navLoading, navigate, route.functionId, route.mode])
 
   useEffect(() => {
     const chatKey = activeChatKey
@@ -1454,14 +1446,14 @@ export function FuncOperationWorkspace() {
   }, [viewMode, activePublishedFunction?.id, activePublishedFunction?.generatedAppId, activePublishedFunction?.codeVersion])
 
   useEffect(() => {
-    if (navLoading) {
+    if (navLoading || (route.mode === 'published' && !route.functionId)) {
       return
     }
     const nextViewKey = resolveActiveFuncMenuViewKey(activeUserNavViewKey, userSidebarNavMenus)
     if (nextViewKey !== activeUserNavViewKey) {
       setActiveUserNavViewKey(nextViewKey)
     }
-  }, [activeUserNavViewKey, navLoading, userSidebarNavMenus])
+  }, [activeUserNavViewKey, navLoading, route.functionId, route.mode, userSidebarNavMenus])
 
   useEffect(() => {
     if (loading || route.mode !== null) {
@@ -1739,7 +1731,9 @@ export function FuncOperationWorkspace() {
 
   function renderPublished() {
     const hasUserSidebarNav = filteredUserSidebarNavMenus.length > 0
-    const showFunctionPreview = isFuncMenuViewKey(activeUserNavViewKey)
+    // The route is authoritative: returning to /published must immediately
+    // show the workbench even before the sidebar selection effect completes.
+    const showFunctionPreview = Boolean(route.functionId)
 
     return (
       <div className="func-shell">
@@ -1751,6 +1745,18 @@ export function FuncOperationWorkspace() {
               aria-label="搜索功能"
               onChange={setAdminKeyword}
             />
+          </div>
+
+          <div className="func-workspace-nav-entry">
+            <Button
+              type="text"
+              block
+              className={`func-workspace-nav-button${!showFunctionPreview ? ' is-active' : ''}`}
+              icon={<AppstoreOutlined />}
+              onClick={openWorkspace}
+            >
+              工作台
+            </Button>
           </div>
 
           {hasUserSidebarNav ? (
@@ -1783,26 +1789,7 @@ export function FuncOperationWorkspace() {
           <ConsoleTabBar />
           <div className="func-page-body">
           {!showFunctionPreview ? (
-            <div className="func-page-empty func-home-empty">
-              {hasUserSidebarNav ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请从左侧选择一个功能" />
-              ) : (
-                <div className="func-home-empty-hero">
-                  <div className="func-home-empty-icon" aria-hidden="true">
-                    <RocketOutlined />
-                  </div>
-                  <h2>开始构建你的第一个功能</h2>
-                  <p>在菜单管理的「功能使用」下创建目录，发布功能后即可按角色权限展示。</p>
-                  <div className="func-home-empty-actions">
-                    {canAccessAdminHome ? (
-                      <Button size="large" icon={<SettingOutlined />} onClick={openAdminHome}>
-                        进入管理后台
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-            </div>
+            <PlatformWorkbench />
           ) : !activePublishedFunction ? (
             <div className="func-page-empty func-home-empty">
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="功能加载中或暂无访问权限" />
