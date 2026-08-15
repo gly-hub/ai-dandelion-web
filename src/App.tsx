@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { App as AntApp, Avatar, Badge, Button, Empty, List, Popover, Space, Spin, Tag, Tooltip } from 'antd'
-import { BellOutlined, LogoutOutlined, MessageOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { BellOutlined, CloudSyncOutlined, LogoutOutlined, MessageOutlined, QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { XProvider } from '@ant-design/x'
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import type { CSSProperties } from 'react'
@@ -10,7 +10,14 @@ import { NavMenuProvider, useNavMenus } from './contexts/NavMenuContext'
 import { LoginPage } from './modules/system/LoginPage'
 import { AiAgentWorkspace } from './modules/ai-agent/AiAgentWorkspace'
 import { FuncOperationWorkspace } from './modules/func-operation/FuncOperationWorkspace'
-import { ensureRealtimeConnection, subscribeRealtimeEvents } from './lib/aiAgentProvider'
+import {
+  ensureRealtimeConnection,
+  reconnectRealtimeConnection,
+  stopRealtimeConnection,
+  subscribeRealtimeConnectionStatus,
+  subscribeRealtimeEvents,
+  type RealtimeConnectionStatus,
+} from './lib/aiAgentProvider'
 import { listSystemNotifications, normalizeSystemNotification, readSystemNotification } from './lib/systemApi'
 import type { SystemNotification } from './types'
 import { buildFuncAdminPath, buildFuncPublishedPath, getModuleFromPath, isFuncEditorImmersivePath, ROUTES } from './lib/routes'
@@ -65,6 +72,7 @@ function ConsoleAppContent() {
   const [chatOpen, setChatOpen] = useState(false)
   const [notifications, setNotifications] = useState<SystemNotification[]>([])
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>('connecting')
   const handledNotificationIdsRef = useRef(new Set<string>())
   const handledNotificationEventsRef = useRef(new Set<string>())
   const [viewportSize, setViewportSize] = useState(() => getViewportSize())
@@ -142,9 +150,29 @@ function ConsoleAppContent() {
     })
   }, [currentUser?.id, modal, toastMessage])
 
+  useEffect(() => {
+    if (!currentUser?.id) {
+      return undefined
+    }
+    return subscribeRealtimeConnectionStatus(setRealtimeStatus)
+  }, [currentUser?.id])
+
   function handleLogout() {
+    stopRealtimeConnection()
     logout()
     navigate(ROUTES.login, { replace: true })
+  }
+
+  const realtimeStatusLabel = realtimeStatus === 'connected'
+    ? '实时已连接'
+    : realtimeStatus === 'connecting'
+      ? '正在连接'
+      : realtimeStatus === 'reconnecting'
+        ? '正在重连'
+        : '实时离线'
+
+  const reconnectRealtime = () => {
+    void reconnectRealtimeConnection().catch(() => undefined)
   }
 
   const handleNotificationClick = (item: SystemNotification) => {
@@ -165,6 +193,25 @@ function ConsoleAppContent() {
             <div className="workspace-topbar-actions">
               <Tooltip title="帮助中心"><Button type="text" shape="circle" icon={<QuestionCircleOutlined />} /></Tooltip>
               <Tooltip title="打开 Agent 对话"><Button type="text" shape="circle" icon={<MessageOutlined />} onClick={() => setChatOpen(true)} /></Tooltip>
+              <Popover
+                trigger="click"
+                placement="bottomRight"
+                title="实时连接"
+                content={(
+                  <div className="workspace-realtime-popover">
+                    <div className="workspace-realtime-popover-status">
+                      <span className={`workspace-realtime-dot is-${realtimeStatus}`} />
+                      <div><strong>{realtimeStatusLabel}</strong><span>WebSocket</span></div>
+                    </div>
+                    <div className="workspace-realtime-auto"><span>自动重连</span><b>已开启</b></div>
+                    <Button block icon={<ReloadOutlined />} loading={realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting'} onClick={reconnectRealtime}>立即重连</Button>
+                  </div>
+                )}
+              >
+                <Tooltip title={realtimeStatusLabel}>
+                  <Button type="text" shape="circle" aria-label={realtimeStatusLabel} className={`workspace-realtime-status is-${realtimeStatus}`} icon={<CloudSyncOutlined />} />
+                </Tooltip>
+              </Popover>
               <Popover trigger="click" placement="bottomRight" title="通知" content={<div style={{ width: 360 }}><List size="small" dataSource={notifications} locale={{ emptyText: '暂无通知' }} renderItem={(item) => <List.Item onClick={() => handleNotificationClick(item)} style={{ cursor: item.read ? 'default' : 'pointer', opacity: item.read ? 0.65 : 1 }}><List.Item.Meta title={<Space size={6}><span>{item.title}</span>{!item.read ? <Tag color="blue">未读</Tag> : null}</Space>} description={<span>{item.content}</span>} /></List.Item>} /></div>}><Badge count={unreadNotificationCount} size="small"><Tooltip title="通知"><Button type="text" shape="circle" icon={<BellOutlined />} /></Tooltip></Badge></Popover>
               <Popover
                 trigger="click"

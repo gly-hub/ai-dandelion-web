@@ -190,20 +190,53 @@ type RealtimeEnvelope = {
 }
 
 export type RealtimeEvent = RealtimeEnvelope & { payload?: unknown; eventId?: string; timestamp?: number }
+export type RealtimeConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline'
 
 let sharedSocket: WebSocket | null = null
 let sharedSocketReady: Promise<void> | null = null
 const sharedListeners = new Map<string, (event: MessageEvent<string>) => void>()
 const sharedEventListeners = new Set<(event: RealtimeEvent) => void>()
 const sharedConnectionListeners = new Set<(connected: boolean) => void>()
+const sharedConnectionStatusListeners = new Set<(status: RealtimeConnectionStatus) => void>()
 const sharedPending = new Map<string, string>()
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectAttempt = 0
+let sharedConnectionStatus: RealtimeConnectionStatus = 'offline'
 const realtimeCursorKey = 'ai-dandelion.realtime.last-event-id'
+
+function setSharedConnectionStatus(status: RealtimeConnectionStatus) {
+  if (sharedConnectionStatus === status) {
+    return
+  }
+  sharedConnectionStatus = status
+  sharedConnectionStatusListeners.forEach((listener) => listener(status))
+  sharedConnectionListeners.forEach((listener) => listener(status === 'connected'))
+}
+
+function flushPendingMessages() {
+  if (sharedSocket?.readyState !== WebSocket.OPEN) {
+    return
+  }
+  sharedPending.forEach((payload) => sharedSocket?.send(payload))
+}
+
+function scheduleSharedSocketReconnect() {
+  if (reconnectTimer) {
+    return
+  }
+  const delay = Math.min(1000 * 2 ** reconnectAttempt, 10000)
+  reconnectAttempt += 1
+  setSharedConnectionStatus('reconnecting')
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    void ensureRealtimeConnection().then(flushPendingMessages).catch(() => undefined)
+  }, delay)
+}
 
 async function ensureSharedSocket() {
   if (sharedSocket?.readyState === WebSocket.OPEN) return
   if (sharedSocketReady) return sharedSocketReady
+  setSharedConnectionStatus(reconnectAttempt > 0 ? 'reconnecting' : 'connecting')
   const ticketResponse = await fetch('/realtime/ticket', { method: 'POST', headers: authHeaders() })
   let ticketPayload: { data?: { ticket?: string } }
   try {
@@ -229,30 +262,39 @@ async function ensureSharedSocket() {
     socket.onmessage = (event) => {
       let envelope: RealtimeEnvelope
       try { envelope = JSON.parse(event.data) as RealtimeEnvelope } catch { return }
-      if (envelope.type === 'connection.ready') { finishResolve(); sharedConnectionListeners.forEach((listener) => listener(true)); return }
+      if (envelope.type === 'connection.ready') { reconnectAttempt = 0; setSharedConnectionStatus('connected'); finishResolve(); return }
       if (envelope.eventId) window.localStorage.setItem(realtimeCursorKey, envelope.eventId)
       if (envelope.requestId) sharedListeners.get(envelope.requestId)?.(event)
       sharedEventListeners.forEach((listener) => listener(envelope as RealtimeEvent))
     }
-    socket.onerror = () => { finishReject(new Error('实时连接失败')); sharedSocketReady = null; sharedSocket = null }
-    socket.onclose = () => {
-      finishReject(new Error('实时连接已关闭'))
+    socket.onerror = () => {
+      finishReject(new Error('实时连接失败'))
+      if (sharedSocket !== socket) return
       sharedSocketReady = null
       sharedSocket = null
-      sharedConnectionListeners.forEach((listener) => listener(false))
-      if (sharedPending.size > 0 && !reconnectTimer) {
-        const delay = Math.min(1000 * 2 ** reconnectAttempt, 10000)
-        reconnectAttempt += 1
-        reconnectTimer = setTimeout(() => { reconnectTimer = null; void ensureSharedSocket().then(() => { sharedPending.forEach((payload) => { if (sharedSocket?.readyState === WebSocket.OPEN) sharedSocket.send(payload) }) }).catch(() => undefined) }, delay)
-      }
+      setSharedConnectionStatus('offline')
+      scheduleSharedSocketReconnect()
     }
-    socket.onopen = () => { reconnectAttempt = 0 }
+    socket.onclose = () => {
+      finishReject(new Error('实时连接已关闭'))
+      if (sharedSocket !== socket) return
+      sharedSocketReady = null
+      sharedSocket = null
+      setSharedConnectionStatus('offline')
+      scheduleSharedSocketReconnect()
+    }
   })
   return sharedSocketReady
 }
 
 export async function ensureRealtimeConnection(): Promise<void> {
-  await ensureSharedSocket()
+  try {
+    await ensureSharedSocket()
+  } catch (error) {
+    setSharedConnectionStatus('offline')
+    scheduleSharedSocketReconnect()
+    throw error
+  }
 }
 
 export function subscribeRealtimeEvents(listener: (event: RealtimeEvent) => void): () => void {
@@ -262,12 +304,44 @@ export function subscribeRealtimeEvents(listener: (event: RealtimeEvent) => void
 
 export function subscribeRealtimeConnection(listener: (connected: boolean) => void): () => void {
   sharedConnectionListeners.add(listener)
-  listener(sharedSocket?.readyState === WebSocket.OPEN)
+  listener(sharedConnectionStatus === 'connected')
   return () => sharedConnectionListeners.delete(listener)
 }
 
+export function subscribeRealtimeConnectionStatus(listener: (status: RealtimeConnectionStatus) => void): () => void {
+  sharedConnectionStatusListeners.add(listener)
+  listener(sharedConnectionStatus)
+  return () => sharedConnectionStatusListeners.delete(listener)
+}
+
+export async function reconnectRealtimeConnection(): Promise<void> {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  reconnectAttempt = 0
+  const socket = sharedSocket
+  sharedSocket = null
+  sharedSocketReady = null
+  socket?.close()
+  await ensureRealtimeConnection()
+}
+
+export function stopRealtimeConnection() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  reconnectAttempt = 0
+  const socket = sharedSocket
+  sharedSocket = null
+  sharedSocketReady = null
+  socket?.close()
+  setSharedConnectionStatus('offline')
+}
+
 export async function sendRealtimeCommand(type: string, payload: unknown, requestId?: string): Promise<string> {
-  await ensureSharedSocket()
+  await ensureRealtimeConnection()
   const id = requestId || `cmd-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const message = JSON.stringify({ protocolVersion: 1, type, requestId: id, payload })
   if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) throw new Error('实时连接不可用')
@@ -302,8 +376,8 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
     this.aborted = false
     this.requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const callbacks = this.options.callbacks as XRequestCallbacks<StreamChunk, ChatMessage> | undefined
-    sharedListeners.set(this.requestId, (event) => this.handleEvent(event, () => undefined))
-    void ensureSharedSocket().then(() => {
+    sharedListeners.set(this.requestId, (event) => this.handleEvent(event))
+    void ensureRealtimeConnection().then(() => {
       if (this.aborted) return
       const payload = JSON.stringify({
         protocolVersion: 1,
@@ -336,7 +410,7 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
     callbacks?.onSuccess?.([], new Headers())
   }
 
-  private handleEvent(event: MessageEvent<string>, _ready: () => void) {
+  private handleEvent(event: MessageEvent<string>) {
     let envelope: RealtimeEnvelope
     try { envelope = JSON.parse(event.data) as RealtimeEnvelope } catch { return }
     if (envelope.type === 'connection.ready') return

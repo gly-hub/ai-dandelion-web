@@ -84,6 +84,30 @@ body,
 
 .workspace-topbar-actions .ant-btn:hover { color: var(--workspace-blue); border-color: #bad4f7; background: #f4f8ff; }
 
+.workspace-topbar-actions .workspace-realtime-status {
+  height: 34px;
+  color: #2b8960;
+}
+
+.workspace-topbar-actions .workspace-realtime-status.is-connecting,
+.workspace-topbar-actions .workspace-realtime-status.is-reconnecting { color: #b87522; }
+.workspace-topbar-actions .workspace-realtime-status.is-offline { color: #c6534c; }
+.workspace-realtime-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #41a878; }
+.workspace-realtime-dot.is-connecting,
+.workspace-realtime-dot.is-reconnecting { background: #d69a43; animation: workspace-realtime-pulse 1.2s ease-in-out infinite; }
+.workspace-realtime-dot.is-offline { background: #d35f58; }
+.workspace-realtime-popover { display: grid; gap: 14px; width: 224px; padding: 2px; }
+.workspace-realtime-popover-status { display: flex; align-items: center; gap: 10px; }
+.workspace-realtime-popover-status > div { display: grid; gap: 2px; }
+.workspace-realtime-popover-status strong { color: #254767; font-size: 13px; }
+.workspace-realtime-popover-status span:not(.workspace-realtime-dot) { color: #8192a6; font-size: 11px; }
+.workspace-realtime-auto { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid #edf1f5; border-bottom: 1px solid #edf1f5; color: #718399; font-size: 12px; }
+.workspace-realtime-auto b { color: #2b8960; font-weight: 600; }
+.workspace-realtime-popover .ant-btn { justify-content: center; }
+
+@keyframes workspace-realtime-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .workspace-realtime-dot.is-connecting, .workspace-realtime-dot.is-reconnecting { animation: none; } }
+
 .workspace-user-avatar {
   margin-left: 4px;
   cursor: pointer;
