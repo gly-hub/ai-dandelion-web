@@ -1,0 +1,70 @@
+.platform-workbench {
+  width: 100%;
+  background: var(--workspace-canvas);
+}
+
+.platform-workbench-main { width: min(100%, 1180px); min-width: 0; margin: 0 auto; padding: 28px 32px; }
+.platform-workbench-main > * { width: min(100%, 1180px); margin-right: auto; margin-left: auto; }
+.platform-workbench-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--workspace-line); }
+.platform-workbench-eyebrow { margin: 0 0 7px; color: var(--workspace-blue); font-size: 13px; font-weight: 700; }
+.platform-workbench-header h1 { margin: 0; color: #19385f; font-size: 26px; line-height: 1.3; letter-spacing: 0; }
+.platform-workbench-header p:not(.platform-workbench-eyebrow) { margin: 8px 0 0; color: #6d8197; font-size: 14px; line-height: 1.6; }
+
+.platform-workbench-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 320px; color: #71859d; font-size: 13px; }
+.platform-workbench-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.platform-workbench-stat { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 10px; align-items: center; min-height: 74px; padding: 13px 15px; border: 1px solid var(--workspace-line); border-radius: 6px; background: #fff; }
+.platform-workbench-stat-icon { display: grid; grid-row: span 2; place-items: center; width: 27px; height: 27px; border-radius: 6px; color: #2d73d7; background: #edf5ff; }
+.platform-workbench-stat.is-green .platform-workbench-stat-icon { color: #2b8d64; background: #ebf8f0; }
+.platform-workbench-stat.is-orange .platform-workbench-stat-icon { color: #c57a27; background: #fff4e7; }
+.platform-workbench-stat.is-purple .platform-workbench-stat-icon { color: #7957b4; background: #f2edfb; }
+.platform-workbench-stat strong { color: #19385f; font-size: 21px; line-height: 1; }
+.platform-workbench-stat > span:last-child { color: #70839a; font-size: 11px; }
+
+.platform-workbench-path { display: grid; grid-template-columns: 130px minmax(0, 1fr); align-items: center; gap: 18px; margin-top: 16px; padding: 13px 16px; border: 1px solid var(--workspace-line); border-radius: 6px; background: #fff; }
+.platform-workbench-path h2, .platform-workbench-section-heading h2 { margin: 0; color: #24486d; font-size: 15px; letter-spacing: 0; }
+.platform-workbench-path > div p { margin: 5px 0 0; color: #7b8da2; font-size: 10px; }
+.platform-workbench-path ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; padding: 0; list-style: none; }
+.platform-workbench-path li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; }
+.platform-workbench-path li > span { color: var(--workspace-blue); font-size: 12px; font-weight: 700; }
+.platform-workbench-path b { display: block; color: #355a80; font-size: 12px; }
+.platform-workbench-path li p { margin: 4px 0 0; color: #8494a6; font-size: 10px; line-height: 1.45; }
+
+.platform-workbench-modules { margin-top: 17px; }
+.platform-workbench-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.platform-workbench-section-heading span { color: #8191a2; font-size: 11px; }
+.platform-workbench-module-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.platform-workbench-module { display: flex; flex-direction: column; min-width: 0; min-height: 266px; padding: 16px; border: 1px solid var(--workspace-line); border-top-width: 3px; border-radius: 6px; background: #fff; }
+.platform-workbench-module.is-function { border-top-color: #317ee2; }
+.platform-workbench-module.is-agent { border-top-color: #8a66c9; }
+.platform-workbench-module.is-system { border-top-color: #319670; }
+.platform-workbench-module-kicker { display: flex; align-items: center; justify-content: space-between; color: #74879b; font-size: 11px; }
+.platform-workbench-module-kicker > span { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 6px; color: #347ee1; background: #eef5ff; font-size: 14px; }
+.platform-workbench-module.is-agent .platform-workbench-module-kicker > span { color: #805dbf; background: #f2edff; }
+.platform-workbench-module.is-system .platform-workbench-module-kicker > span { color: #288b67; background: #e9f8f0; }
+.platform-workbench-module h3 { margin: 11px 0 5px; color: #24486d; font-size: 16px; letter-spacing: 0; }
+.platform-workbench-module-lead { min-height: 35px; margin: 0; color: #627b94; font-size: 11px; line-height: 1.55; }
+.platform-workbench-module ul { display: grid; gap: 7px; margin: 12px 0 0; padding: 11px 0; border-top: 1px solid #edf1f5; border-bottom: 1px solid #edf1f5; list-style: none; }
+.platform-workbench-module li { position: relative; padding-left: 13px; color: #6d8196; font-size: 10px; line-height: 1.4; }
+.platform-workbench-module li::before { position: absolute; top: 5px; left: 0; width: 4px; height: 4px; border-radius: 50%; background: #4a8ae0; content: ''; }
+.platform-workbench-module.is-agent li::before { background: #8a66c9; }
+.platform-workbench-module.is-system li::before { background: #319670; }
+.platform-workbench-module-result { margin: auto 0 0; padding-top: 11px; color: #496782; font-size: 10px; line-height: 1.45; }
+.platform-workbench-module .ant-btn-link { align-self: flex-start; height: 24px; margin-top: 4px; padding: 0; font-size: 11px; }
+.platform-workbench-unavailable { display: flex; align-items: center; gap: 7px; margin: 12px auto 0; padding: 9px 13px; border: 1px dashed #cfdae5; border-radius: 6px; color: #718399; background: #fbfcfd; font-size: 10px; line-height: 1.45; }
+
+@media (max-width: 1100px) {
+  .platform-workbench-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 820px) {
+  .platform-workbench-main { padding: 24px 18px; }
+  .platform-workbench-path { grid-template-columns: 1fr; }
+  .platform-workbench-stat { min-height: 70px; }
+}
+
+@media (max-width: 620px) {
+  .platform-workbench-header { display: grid; }
+  .platform-workbench-header .ant-btn { justify-self: start; }
+  .platform-workbench-stats, .platform-workbench-module-grid, .platform-workbench-path ol { grid-template-columns: 1fr; }
+  .platform-workbench-section-heading { display: grid; gap: 5px; }
+}
