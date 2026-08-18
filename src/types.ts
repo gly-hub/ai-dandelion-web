@@ -59,7 +59,7 @@ export interface SystemNotification {
 
 export type Role = 'user' | 'assistant' | 'system'
 export type ChatStatus = 'local' | 'loading' | 'updating' | 'success' | 'error' | 'abort'
-export type ChatExtraType = 'skill' | 'mcp'
+export type ChatExtraType = 'skill' | 'mcp' | 'function_skill'
 
 export interface ChatExtraItem {
   type: ChatExtraType
@@ -75,6 +75,11 @@ export type MessagePart =
     }
   | {
       type: 'skill'
+      skillId: string
+      label: string
+    }
+  | {
+      type: 'function_skill'
       skillId: string
       label: string
     }
@@ -170,6 +175,15 @@ export interface AgentSkillOption {
   description: string
   source: string
   enabled: boolean
+  updatedAt: number
+}
+
+export interface AgentFunctionSkillOption {
+  id: string
+  functionId: string
+  name: string
+  description: string
+  toolPrefix: string
   updatedAt: number
 }
 

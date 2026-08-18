@@ -103,7 +103,7 @@ function normalizeExtra(value: unknown): ChatExtraItem[] {
   return value
     .map((item) => {
       const data = item && typeof item === 'object' ? (item as Partial<ChatExtraItem>) : {}
-      const type = data.type === 'skill' || data.type === 'mcp' ? data.type : undefined
+      const type = data.type === 'skill' || data.type === 'mcp' || data.type === 'function_skill' ? data.type : undefined
       const id = typeof data.id === 'string' ? data.id.trim() : ''
       const name = typeof data.name === 'string' ? data.name.trim() : ''
       if (!type || !id) {
@@ -124,7 +124,9 @@ function buildSkillPartsFromExtra(extra?: ChatExtraItem[]): MessagePart[] {
     .map((item) => ({
       ...(item.type === 'mcp'
         ? { type: 'mcp' as const, mcpId: item.id, label: item.name || item.id }
-        : { type: 'skill' as const, skillId: item.id, label: item.name || item.id }),
+        : item.type === 'function_skill'
+          ? { type: 'function_skill' as const, skillId: item.id, label: item.name || item.id }
+          : { type: 'skill' as const, skillId: item.id, label: item.name || item.id }),
   }))
 }
 
@@ -145,6 +147,9 @@ function normalizeMessageParts(parts?: MessagePart[]) {
       return Boolean(part.text)
     }
     if (part.type === 'skill') {
+      return Boolean(part.skillId && part.label)
+    }
+    if (part.type === 'function_skill') {
       return Boolean(part.skillId && part.label)
     }
     if (part.type === 'mcp') {
@@ -606,7 +611,7 @@ function hasPersistedParts(message: PersistedMessage) {
 }
 
 function hasSkillPart(parts: MessagePart[]) {
-  return parts.some((part) => part.type === 'skill')
+  return parts.some((part) => part.type === 'skill' || part.type === 'function_skill')
 }
 
 function applyTextAppend(message: ChatMessage, text: string) {
