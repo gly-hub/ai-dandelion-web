@@ -355,9 +355,13 @@ export async function sendRealtimeCommand(type: string, payload: unknown, reques
 }
 
 class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, ChatMessage> {
+  private static readonly updateIntervalMs = 80
+
   private requestId = ''
   private requesting = false
   private aborted = false
+  private pendingChunks: StreamChunk[] = []
+  private updateTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly sessionId: string
 
@@ -405,6 +409,7 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
     if (!this.requesting) return
     this.aborted = true
     const callbacks = this.options.callbacks as XRequestCallbacks<StreamChunk, ChatMessage> | undefined
+    this.flushPendingUpdates()
     sharedSocket?.send(JSON.stringify({ protocolVersion: 1, type: 'ai-agent.stream.cancel', requestId: this.requestId, payload: { sessionId: this.sessionId } }))
     sharedListeners.delete(this.requestId)
     sharedPending.delete(this.requestId)
@@ -421,17 +426,52 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
     if (envelope.type === 'connection.ready') return
     if (!envelope.requestId || envelope.requestId !== this.requestId) return
     const callbacks = this.options.callbacks as XRequestCallbacks<StreamChunk, ChatMessage> | undefined
-    if (envelope.type === 'error') { sharedListeners.delete(this.requestId); sharedPending.delete(this.requestId); this.requesting = false; callbacks?.onError(new Error(String((envelope.payload as { message?: string })?.message || '实时请求失败'))); return }
+    if (envelope.type === 'error') {
+      this.flushPendingUpdates()
+      sharedListeners.delete(this.requestId)
+      sharedPending.delete(this.requestId)
+      this.requesting = false
+      callbacks?.onError(new Error(String((envelope.payload as { message?: string })?.message || '实时请求失败')))
+      return
+    }
     const payload = (envelope.payload || {}) as Record<string, unknown>
     const streamType = typeof payload.type === 'string' ? payload.type : envelope.type?.replace('ai-agent.stream.', '') || 'text_delta'
     const chunk = { event: streamType, data: normalizeStreamPayload(streamType, payload) } as StreamChunk
-    callbacks?.onUpdate?.(chunk, new Headers())
     if (envelope.type === 'ai-agent.stream.done' || Boolean(payload.done)) {
+      this.flushPendingUpdates()
+      callbacks?.onUpdate?.(chunk, new Headers())
       this.requesting = false
       sharedListeners.delete(this.requestId)
       sharedPending.delete(this.requestId)
       callbacks?.onSuccess?.([chunk], new Headers())
+      return
     }
+    this.queueUpdate(chunk)
+  }
+
+  private queueUpdate(chunk: StreamChunk) {
+    this.pendingChunks.push(chunk)
+    if (this.updateTimer) {
+      return
+    }
+    this.updateTimer = setTimeout(() => {
+      this.updateTimer = null
+      this.flushPendingUpdates()
+    }, RealtimeRequest.updateIntervalMs)
+  }
+
+  private flushPendingUpdates() {
+    if (this.updateTimer) {
+      clearTimeout(this.updateTimer)
+      this.updateTimer = null
+    }
+    if (this.pendingChunks.length === 0) {
+      return
+    }
+    const chunks = this.pendingChunks
+    this.pendingChunks = []
+    const callbacks = this.options.callbacks as XRequestCallbacks<StreamChunk, ChatMessage> | undefined
+    chunks.forEach((chunk) => callbacks?.onUpdate?.(chunk, new Headers()))
   }
 }
 
