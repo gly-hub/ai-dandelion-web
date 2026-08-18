@@ -4547,11 +4547,29 @@
   font-size: 14px;
 }
 
-.console-app .chat-slash-command-item span:last-child {
+.console-app .chat-slash-command-item-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.console-app .chat-slash-command-item-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.console-app .chat-slash-command-app-tag {
+  flex: 0 0 auto;
+  margin: 0;
+  border-color: rgba(38, 140, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(38, 140, 255, 0.08);
+  color: #1677ff;
+  font-size: 11px;
+  line-height: 18px;
 }
 
 .console-app .chat-slash-command-item mark {

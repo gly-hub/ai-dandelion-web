@@ -1508,7 +1508,9 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                             }}
                           >
                             <AppstoreAddOutlined aria-hidden="true" />
-                            <span>{renderHighlightedText(formatMCPLabel(server), slashCommand.query)}</span>
+                            <span className="chat-slash-command-item-label">
+                              <span className="chat-slash-command-item-name">{renderHighlightedText(formatMCPLabel(server), slashCommand.query)}</span>
+                            </span>
                           </button>
                         ))
                       )
@@ -1516,18 +1518,23 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                       <div className="chat-slash-command-empty">暂无匹配技能</div>
                     ) : (
                       <>
-                        {slashCommandSkills.length > 0 ? <div className="chat-slash-command-group-title">个人技能</div> : null}
                         {slashCommandSkills.map((skill) => (
                           <button key={skill.id} type="button" role="option" className="chat-slash-command-item" onMouseDown={(event) => { event.preventDefault(); insertSlashCommandSkillToken(skill) }}>
                             <AppstoreAddOutlined aria-hidden="true" />
-                            <span>{renderHighlightedText(formatSkillLabel(skill), slashCommand.query)}</span>
+                            <span className="chat-slash-command-item-label">
+                              <span className="chat-slash-command-item-name">{renderHighlightedText(formatSkillLabel(skill), slashCommand.query)}</span>
+                            </span>
                           </button>
                         ))}
-                        {slashCommandFunctionSkills.length > 0 ? <div className="chat-slash-command-group-title">功能技能</div> : null}
                         {slashCommandFunctionSkills.map((skill) => (
                           <button key={skill.id} type="button" role="option" className="chat-slash-command-item" onMouseDown={(event) => { event.preventDefault(); insertSlashCommandFunctionSkillToken(skill) }}>
-                            <ToolOutlined aria-hidden="true" />
-                            <span>{renderHighlightedText(skill.name, slashCommand.query)}</span>
+                            <AppstoreAddOutlined aria-hidden="true" />
+                            <span className="chat-slash-command-item-label">
+                              <span className="chat-slash-command-item-name">{renderHighlightedText(skill.name, slashCommand.query)}</span>
+                              <Tooltip title="功能技能：可通过 Agent 操作已发布功能">
+                                <Tag className="chat-slash-command-app-tag">App</Tag>
+                              </Tooltip>
+                            </span>
                           </button>
                         ))}
                       </>
