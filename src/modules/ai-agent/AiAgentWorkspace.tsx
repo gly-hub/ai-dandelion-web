@@ -1810,6 +1810,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
           width={1000}
           zIndex={1002}
           getContainer={false}
+          destroyOnHidden
           className="agent-tools-settings-modal"
           onCancel={() => setAgentSettingsOpen(false)}
         >
