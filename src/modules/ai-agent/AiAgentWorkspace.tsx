@@ -42,7 +42,6 @@ import { listAgentFunctionSkillOptions } from '../../lib/agentFunctionSkillApi'
 import { buildBubbleItemKey } from '../../lib/chatBubble'
 import { MAX_LIVE_CHAT_MESSAGES, releaseChatStore } from '../../lib/chatSession'
 import {
-  AiAgentStreamProvider,
   createAiAgentProvider,
   createChatMessage,
   normalizePersistedMessage,
@@ -59,7 +58,6 @@ import { findNavMenuByViewKey, pickDefaultViewKey } from '../../lib/navMenus'
 import { buildAiAgentPath, parseAiAgentPath } from '../../lib/routes'
 import type { AgentFunctionSkillOption, AgentMCPServerOption, AgentModelOption, AgentSkillOption, ChatExtraItem, ChatMessage, ChatStatus, PersistedMessage, Session, StreamChunk, TodoTask } from '../../types'
 
-const providerCache = new Map<string, AiAgentStreamProvider>()
 const MESSAGE_PAGE_SIZE = 40
 const HISTORY_LOAD_SCROLL_THRESHOLD = 48
 const BOTTOM_SCROLL_THRESHOLD = 80
@@ -328,7 +326,15 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   const activeSessionId =
     activeView === 'chat' && urlSessionId ? urlSessionId : activeConversationSessionId
   const provider = useMemo(
-    () => (activeSessionId ? getProvider(activeSessionId) : undefined),
+    () => (
+      activeSessionId
+        ? createAiAgentProvider(
+          activeSessionId,
+          () => resolveStreamModelId(autoModelRef.current, selectedModelIdRef.current),
+          () => ({}),
+        )
+        : undefined
+    ),
     [activeSessionId],
   )
 
@@ -465,9 +471,10 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
       return
     }
     return () => {
+      provider?.request.abort()
       releaseChatStore(chatKey)
     }
-  }, [activeSessionId])
+  }, [activeSessionId, provider])
 
   const reloadSessionsEvent = useEffectEvent(reloadSessions)
   const handleCreateSessionEvent = useEffectEvent(handleCreateSession)
@@ -1858,20 +1865,6 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     </>
   )
 
-  function getProvider(sessionId: string) {
-    if (!providerCache.has(sessionId)) {
-      providerCache.set(
-        sessionId,
-        createAiAgentProvider(
-          sessionId,
-          () => resolveStreamModelId(autoModelRef.current, selectedModelIdRef.current),
-          () => ({}),
-        ),
-      )
-    }
-    return providerCache.get(sessionId)!
-  }
-
   function syncBottomState(panel: HTMLElement) {
     const distanceToBottom = panel.scrollHeight - panel.clientHeight - panel.scrollTop
     const nextIsNearBottom = distanceToBottom <= BOTTOM_SCROLL_THRESHOLD
@@ -1880,7 +1873,6 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   }
 
   function clearSessionClientCache(sessionId: string) {
-    providerCache.delete(sessionId)
     releaseChatStore(sessionId)
   }
 }

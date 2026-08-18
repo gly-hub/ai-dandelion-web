@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { XMarkdown } from '@ant-design/x-markdown'
 
 interface MarkdownBlockProps {
@@ -5,14 +6,13 @@ interface MarkdownBlockProps {
   streaming?: boolean
 }
 
-export function MarkdownBlock({ content, streaming = false }: MarkdownBlockProps) {
+export const MarkdownBlock = memo(function MarkdownBlock({ content, streaming = false }: MarkdownBlockProps) {
   return (
     <div className={`markdown-shell${streaming ? ' streaming' : ''}`}>
       <XMarkdown
         content={content || ''}
-        streaming={{ hasNextChunk: streaming }}
         rootClassName="markdown-body"
       />
     </div>
   )
-}
+})
