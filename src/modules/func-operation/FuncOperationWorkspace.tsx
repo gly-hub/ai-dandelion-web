@@ -274,6 +274,7 @@ export function FuncOperationWorkspace() {
   const [modelOptions, setModelOptions] = useState<AgentModelOption[]>([])
   const [sessionConfigs, setSessionConfigs] = useState<AgentSessionConfig[]>([])
   const sessionConfigsRef = useRef<AgentSessionConfig[]>([])
+  const modelOptionsRef = useRef<AgentModelOption[]>([])
   const [form] = Form.useForm<{ name: string; description: string; menuParentId?: string }>()
   const handledReadyTagsRef = useRef<Set<string>>(new Set())
   const handledDocumentReadyTagsRef = useRef<Set<string>>(new Set())
@@ -298,6 +299,10 @@ export function FuncOperationWorkspace() {
   useEffect(() => {
     sessionConfigsRef.current = sessionConfigs
   }, [sessionConfigs])
+
+  useEffect(() => {
+    modelOptionsRef.current = modelOptions
+  }, [modelOptions])
 
   useEffect(() => {
     void Promise.all([listAgentModelOptions(), listAgentSessionConfigs()])
@@ -425,7 +430,7 @@ export function FuncOperationWorkspace() {
           resolveFunctionConversationModelId(
             sessionConfigsRef.current,
             resolvedEditorConversation,
-            modelOptions,
+            modelOptionsRef.current,
           ),
           () => resolveFunctionConversationRuntimeConfig(
             sessionConfigsRef.current,
@@ -433,7 +438,7 @@ export function FuncOperationWorkspace() {
           ),
         )
         : undefined,
-    [activeSessionId, modelOptions, resolvedEditorConversation],
+    [activeSessionId, resolvedEditorConversation],
   )
 
   const {
@@ -470,21 +475,6 @@ export function FuncOperationWorkspace() {
   })
 
   onRequestRef.current = onRequest
-  const abortRef = useRef(abort)
-  abortRef.current = abort
-  const isRequestingRef = useRef(isRequesting)
-  isRequestingRef.current = isRequesting
-
-  function safeAbortChatRequest() {
-    if (!isRequestingRef.current) {
-      return
-    }
-    try {
-      abortRef.current()
-    } catch {
-      // x-sdk abort() requires an in-flight request with AbortController
-    }
-  }
 
   function handleUserNavSelect(viewKey: string) {
     const functionId = parseFuncMenuViewKey(viewKey)
@@ -532,14 +522,15 @@ export function FuncOperationWorkspace() {
 
   useEffect(() => {
     const chatKey = activeChatKey
+    const chatProvider = provider
     if (!chatKey) {
       return
     }
     return () => {
-      safeAbortChatRequest()
+      chatProvider?.request.abort()
       releaseChatStore(chatKey)
     }
-  }, [activeChatKey])
+  }, [activeChatKey, provider])
 
   useEffect(() => {
     if (isRequesting || messages.length <= MAX_LIVE_CHAT_MESSAGES) {
@@ -870,7 +861,6 @@ export function FuncOperationWorkspace() {
           invalidateGeneratedAppModuleCache(updated.generatedAppId)
           await loadGeneratedApps({ reload: true })
         }
-        navigate(buildFuncPublishedPath(updated.id))
       }
     } finally {
       setStatusUpdatingId('')
@@ -2400,6 +2390,7 @@ export function FuncOperationWorkspace() {
           </div>
         ) : (
           <GeneratedAppPreviewCanvas
+            key={previewRenderKey}
             app={previewApp}
             enabled
             renderKey={previewRenderKey}

@@ -547,8 +547,8 @@ function renderUserParts(parts: MessagePart[], fallbackContent: string, messageK
   }
 
   return userParts.map((part, index) => {
-    if (part.type === 'skill' || part.type === 'mcp') {
-      const id = part.type === 'skill' ? part.skillId : part.mcpId
+    if (part.type === 'skill' || part.type === 'mcp' || part.type === 'function_skill') {
+      const id = part.type === 'mcp' ? part.mcpId : part.skillId
       return (
         <span
           key={`${messageKey}-${part.type}-${id}-${index}`}
@@ -645,8 +645,8 @@ function isUserAttachmentPart(
 
 function isVisibleUserPart(
   part: MessagePart,
-): part is Extract<MessagePart, { type: 'skill' | 'mcp' | 'text' | 'file' | 'image' | 'document' }> {
-  return part.type === 'skill' || part.type === 'mcp' || part.type === 'file' || part.type === 'image' || part.type === 'document' || (part.type === 'text' && Boolean(part.text))
+): part is Extract<MessagePart, { type: 'skill' | 'mcp' | 'function_skill' | 'text' | 'file' | 'image' | 'document' }> {
+  return part.type === 'skill' || part.type === 'mcp' || part.type === 'function_skill' || part.type === 'file' || part.type === 'image' || part.type === 'document' || (part.type === 'text' && Boolean(part.text))
 }
 
 function isTaskTool(toolName?: string) {

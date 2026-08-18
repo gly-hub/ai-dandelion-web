@@ -376,7 +376,7 @@ function normalizeExtra(
         const type = stringValue(data.type)
         const id = stringValue(data.id).trim()
         const name = stringValue(data.name).trim()
-        if ((type !== 'skill' && type !== 'mcp') || !id) {
+        if ((type !== 'skill' && type !== 'mcp' && type !== 'function_skill') || !id) {
           return null
         }
         return {

@@ -38,10 +38,10 @@ import {
   listUserAgentSkillOptions,
 } from '../../lib/agentSkillApi'
 import { formatMCPLabel, listAgentMCPServers, listUserAgentMCPServers } from '../../lib/agentMcpApi'
+import { listAgentFunctionSkillOptions } from '../../lib/agentFunctionSkillApi'
 import { buildBubbleItemKey } from '../../lib/chatBubble'
 import { MAX_LIVE_CHAT_MESSAGES, releaseChatStore } from '../../lib/chatSession'
 import {
-  AiAgentStreamProvider,
   createAiAgentProvider,
   createChatMessage,
   normalizePersistedMessage,
@@ -56,9 +56,8 @@ import {
 import { resolveMenuIcon } from '../../lib/menuIcons'
 import { findNavMenuByViewKey, pickDefaultViewKey } from '../../lib/navMenus'
 import { buildAiAgentPath, parseAiAgentPath } from '../../lib/routes'
-import type { AgentMCPServerOption, AgentModelOption, AgentSkillOption, ChatExtraItem, ChatMessage, ChatStatus, PersistedMessage, Session, StreamChunk, TodoTask } from '../../types'
+import type { AgentFunctionSkillOption, AgentMCPServerOption, AgentModelOption, AgentSkillOption, ChatExtraItem, ChatMessage, ChatStatus, PersistedMessage, Session, StreamChunk, TodoTask } from '../../types'
 
-const providerCache = new Map<string, AiAgentStreamProvider>()
 const MESSAGE_PAGE_SIZE = 40
 const HISTORY_LOAD_SCROLL_THRESHOLD = 48
 const BOTTOM_SCROLL_THRESHOLD = 80
@@ -141,8 +140,10 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   const [selectedModelId, setSelectedModelId] = useState('')
   const [autoModel, setAutoModel] = useState(() => readAutoModelEnabled())
   const [skillOptions, setSkillOptions] = useState(() => listAgentSkillOptions())
+  const [functionSkillOptions, setFunctionSkillOptions] = useState<AgentFunctionSkillOption[]>([])
   const [mcpServerOptions, setMCPServerOptions] = useState(() => listAgentMCPServers())
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
+  const [selectedFunctionSkillIds, setSelectedFunctionSkillIds] = useState<string[]>([])
   const [selectedMCPIds, setSelectedMCPIds] = useState<string[]>([])
   const [slashCommand, setSlashCommand] = useState<{
     query: string
@@ -181,6 +182,12 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
       return label.includes(keyword) || id.includes(keyword) || description.includes(keyword)
     })
   }, [enabledSkillOptions, slashCommand])
+
+  const slashCommandFunctionSkills = useMemo(() => {
+    if (!slashCommand) return []
+    const keyword = slashCommand.query.trim().toLowerCase()
+    return functionSkillOptions.filter((skill) => !keyword || skill.name.toLowerCase().includes(keyword) || skill.id.toLowerCase().includes(keyword) || skill.description.toLowerCase().includes(keyword))
+  }, [functionSkillOptions, slashCommand])
 
   const enabledMCPServerOptions = useMemo(
     () => mcpServerOptions.filter((item) => item.enabled),
@@ -276,6 +283,10 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   }, [currentUser?.id])
 
   useEffect(() => {
+    void listAgentFunctionSkillOptions().then(setFunctionSkillOptions).catch(() => setFunctionSkillOptions([]))
+  }, [currentUser?.id])
+
+  useEffect(() => {
     if (!currentUser?.id) {
       return
     }
@@ -315,7 +326,15 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   const activeSessionId =
     activeView === 'chat' && urlSessionId ? urlSessionId : activeConversationSessionId
   const provider = useMemo(
-    () => (activeSessionId ? getProvider(activeSessionId) : undefined),
+    () => (
+      activeSessionId
+        ? createAiAgentProvider(
+          activeSessionId,
+          () => resolveStreamModelId(autoModelRef.current, selectedModelIdRef.current),
+          () => ({}),
+        )
+        : undefined
+    ),
     [activeSessionId],
   )
 
@@ -452,9 +471,10 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
       return
     }
     return () => {
+      provider?.request.abort()
       releaseChatStore(chatKey)
     }
-  }, [activeSessionId])
+  }, [activeSessionId, provider])
 
   const reloadSessionsEvent = useEffectEvent(reloadSessions)
   const handleCreateSessionEvent = useEffectEvent(handleCreateSession)
@@ -878,6 +898,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   function clearComposerDraft() {
     setDraft('')
     setSelectedSkillIds([])
+    setSelectedFunctionSkillIds([])
     setSelectedMCPIds([])
     composerSlotConfigRef.current = []
     composerRef.current?.clear?.()
@@ -895,18 +916,22 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     return extractToolMetaFromSlots(slotConfig, 'skill')
   }
 
+  function extractFunctionSkillMetaFromSlots(slotConfig?: SlotConfigType[]) {
+    return extractToolMetaFromSlots(slotConfig, 'function_skill')
+  }
+
   function extractMCPMetaFromSlots(slotConfig?: SlotConfigType[]) {
     return extractToolMetaFromSlots(slotConfig, 'mcp')
   }
 
-  function extractToolMetaFromSlots(slotConfig: SlotConfigType[] | undefined, type: 'skill' | 'mcp') {
+  function extractToolMetaFromSlots(slotConfig: SlotConfigType[] | undefined, type: 'skill' | 'mcp' | 'function_skill') {
     const toolMap = new Map<string, string>()
     ;(slotConfig || [])
       .filter((item): item is Extract<SlotConfigType, { type: 'tag' }> =>
         item.type === 'tag' && typeof item.props?.value === 'string',
       )
       .forEach((item) => {
-        const tokenType = isMCPSlot(item) ? 'mcp' : 'skill'
+        const tokenType = isMCPSlot(item) ? 'mcp' : isFunctionSkillSlot(item) ? 'function_skill' : 'skill'
         if (tokenType !== type) {
           return
         }
@@ -914,7 +939,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
         if (!id) {
           return
         }
-        const label = type === 'mcp' ? resolveMCPLabel(id, item.props?.label) : resolveSkillLabel(id, item.props?.label)
+        const label = type === 'mcp' ? resolveMCPLabel(id, item.props?.label) : type === 'function_skill' ? resolveFunctionSkillLabel(id, item.props?.label) : resolveSkillLabel(id, item.props?.label)
         toolMap.set(id, label)
       })
     return Array.from(toolMap, ([id, label]) => ({ id, label }))
@@ -934,6 +959,11 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     }
     const server = mcpServerOptions.find((item) => item.id === mcpId)
     return server ? formatMCPLabel(server) : mcpId
+  }
+
+  function resolveFunctionSkillLabel(id: string, labelNode: unknown) {
+    if (typeof labelNode === 'string' && labelNode.trim()) return labelNode.trim()
+    return functionSkillOptions.find((item) => item.id === id)?.name || id
   }
 
   function normalizeSubmitContent(value?: string, slotConfig?: SlotConfigType[], fallback = '') {
@@ -974,6 +1004,8 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
             mcpId: toolId,
             label: resolveMCPLabel(toolId, item.props.label),
           })
+        } else if (isFunctionSkillSlot(item)) {
+          parts.push({ type: 'function_skill', skillId: toolId, label: resolveFunctionSkillLabel(toolId, item.props.label) })
         } else {
           parts.push({
             type: 'skill',
@@ -1006,6 +1038,9 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
           index,
         })
       }
+      if (part.type === 'function_skill') {
+        extra.push({ type: 'function_skill', id: part.skillId, name: part.label, index })
+      }
     })
     return extra
   }
@@ -1032,6 +1067,14 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     composerRef.current?.focus?.({ cursor: 'end' })
   }
 
+  function insertSlashCommandFunctionSkillToken(skill: AgentFunctionSkillOption) {
+    const replaceText = slashCommand?.replaceText || ''
+    const key = nextTokenKey('function_skill', skill.id)
+    composerRef.current?.insert?.([{ type: 'tag', key, props: { label: renderComposerSkillToken(skill.name, skill.id, key), value: skill.id }, formatResult: () => skill.name }, { type: 'text', value: ' ' }], 'cursor', replaceText || undefined)
+    setSlashCommand(null)
+    composerRef.current?.focus?.({ cursor: 'end' })
+  }
+
   function insertSlashCommandMCPToken(server: AgentMCPServerOption) {
     const replaceText = slashCommand?.replaceText || ''
     const key = nextTokenKey('mcp', server.id)
@@ -1054,13 +1097,17 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     composerRef.current?.focus?.({ cursor: 'end' })
   }
 
-  function nextTokenKey(prefix: 'skill' | 'mcp', id: string) {
+  function nextTokenKey(prefix: 'skill' | 'mcp' | 'function_skill', id: string) {
     tokenSeedRef.current += 1
     return `${prefix}:${id}:${tokenSeedRef.current}`
   }
 
   function isMCPSlot(item: Extract<SlotConfigType, { type: 'tag' }>) {
     return String(item.key || '').startsWith('mcp:')
+  }
+
+  function isFunctionSkillSlot(item: Extract<SlotConfigType, { type: 'tag' }>) {
+    return String(item.key || '').startsWith('function_skill:')
   }
 
   function syncSlashCommand(value: string, slotConfig?: SlotConfigType[]) {
@@ -1151,6 +1198,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     const nextSlotConfig = composerSlotConfigRef.current.filter((item) => item.key !== slotKey)
     composerSlotConfigRef.current = nextSlotConfig
     setSelectedSkillIds((current) => current.filter((id) => id !== skillId))
+    setSelectedFunctionSkillIds((current) => current.filter((id) => id !== skillId))
     composerRef.current?.clear?.()
     if (nextSlotConfig.length > 0) {
       composerRef.current?.insert?.(nextSlotConfig, 'end', undefined, true)
@@ -1347,10 +1395,12 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                   setDraft((current) => (current === value ? current : value))
                   syncSlashCommand(value, slotConfig)
                   const nextSkillIds = extractSkillIdsFromSlots(slotConfig)
+                  const nextFunctionSkillIds = extractFunctionSkillMetaFromSlots(slotConfig).map((item) => item.id)
                   const nextMCPIds = extractMCPIdsFromSlots(slotConfig)
                   setSelectedSkillIds((current) =>
                     areStringArraysEqual(current, nextSkillIds) ? current : nextSkillIds,
                   )
+                  setSelectedFunctionSkillIds((current) => areStringArraysEqual(current, nextFunctionSkillIds) ? current : nextFunctionSkillIds)
                   setSelectedMCPIds((current) =>
                     areStringArraysEqual(current, nextMCPIds) ? current : nextMCPIds,
                   )
@@ -1361,7 +1411,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                 disabled={booting || uploadingAttachment}
                 placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"
                 autoSize={{ minRows: 3, maxRows: embedded ? 7 : 8 }}
-                className={`chat-sender${selectedSkillIds.length > 0 || selectedMCPIds.length > 0 ? ' has-selected-skill' : ''}`}
+                className={`chat-sender${selectedSkillIds.length > 0 || selectedFunctionSkillIds.length > 0 || selectedMCPIds.length > 0 ? ' has-selected-skill' : ''}`}
                 slotConfig={EMPTY_SLOT_CONFIG}
                 suffix={false}
                 header={uploadedAttachmentItems.length > 0 ? (
@@ -1377,7 +1427,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                   <div className="chat-sender-toolbar">
                     <button
                       type="button"
-                      className={`chat-skill-selector-trigger${slashCommand?.source === 'button' ? ' is-open' : ''}${selectedSkillIds.length > 0 || selectedMCPIds.length > 0 ? ' has-selection' : ''}`}
+                      className={`chat-skill-selector-trigger${slashCommand?.source === 'button' ? ' is-open' : ''}${selectedSkillIds.length > 0 || selectedFunctionSkillIds.length > 0 || selectedMCPIds.length > 0 ? ' has-selection' : ''}`}
                       disabled={booting || isRequesting}
                       onClick={toggleSlashCommandPanel}
                     >
@@ -1465,28 +1515,36 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                             }}
                           >
                             <AppstoreAddOutlined aria-hidden="true" />
-                            <span>{renderHighlightedText(formatMCPLabel(server), slashCommand.query)}</span>
+                            <span className="chat-slash-command-item-label">
+                              <span className="chat-slash-command-item-name">{renderHighlightedText(formatMCPLabel(server), slashCommand.query)}</span>
+                            </span>
                           </button>
                         ))
                       )
-                    ) : slashCommandSkills.length === 0 ? (
+                    ) : slashCommandSkills.length === 0 && slashCommandFunctionSkills.length === 0 ? (
                       <div className="chat-slash-command-empty">暂无匹配技能</div>
                     ) : (
-                      slashCommandSkills.map((skill) => (
-                        <button
-                          key={skill.id}
-                          type="button"
-                          role="option"
-                          className="chat-slash-command-item"
-                          onMouseDown={(event) => {
-                            event.preventDefault()
-                            insertSlashCommandSkillToken(skill)
-                          }}
-                        >
-                          <AppstoreAddOutlined aria-hidden="true" />
-                          <span>{renderHighlightedText(formatSkillLabel(skill), slashCommand.query)}</span>
-                        </button>
-                      ))
+                      <>
+                        {slashCommandSkills.map((skill) => (
+                          <button key={skill.id} type="button" role="option" className="chat-slash-command-item" onMouseDown={(event) => { event.preventDefault(); insertSlashCommandSkillToken(skill) }}>
+                            <AppstoreAddOutlined aria-hidden="true" />
+                            <span className="chat-slash-command-item-label">
+                              <span className="chat-slash-command-item-name">{renderHighlightedText(formatSkillLabel(skill), slashCommand.query)}</span>
+                            </span>
+                          </button>
+                        ))}
+                        {slashCommandFunctionSkills.map((skill) => (
+                          <button key={skill.id} type="button" role="option" className="chat-slash-command-item" onMouseDown={(event) => { event.preventDefault(); insertSlashCommandFunctionSkillToken(skill) }}>
+                            <AppstoreAddOutlined aria-hidden="true" />
+                            <span className="chat-slash-command-item-label">
+                              <span className="chat-slash-command-item-name">{renderHighlightedText(skill.name, slashCommand.query)}</span>
+                              <Tooltip title="功能技能：可通过 Agent 操作已发布功能">
+                                <Tag className="chat-slash-command-app-tag">App</Tag>
+                              </Tooltip>
+                            </span>
+                          </button>
+                        ))}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1752,6 +1810,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
           width={1000}
           zIndex={1002}
           getContainer={false}
+          destroyOnHidden
           className="agent-tools-settings-modal"
           onCancel={() => setAgentSettingsOpen(false)}
         >
@@ -1807,20 +1866,6 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     </>
   )
 
-  function getProvider(sessionId: string) {
-    if (!providerCache.has(sessionId)) {
-      providerCache.set(
-        sessionId,
-        createAiAgentProvider(
-          sessionId,
-          () => resolveStreamModelId(autoModelRef.current, selectedModelIdRef.current),
-          () => ({}),
-        ),
-      )
-    }
-    return providerCache.get(sessionId)!
-  }
-
   function syncBottomState(panel: HTMLElement) {
     const distanceToBottom = panel.scrollHeight - panel.clientHeight - panel.scrollTop
     const nextIsNearBottom = distanceToBottom <= BOTTOM_SCROLL_THRESHOLD
@@ -1829,7 +1874,6 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   }
 
   function clearSessionClientCache(sessionId: string) {
-    providerCache.delete(sessionId)
     releaseChatStore(sessionId)
   }
 }

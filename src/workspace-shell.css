@@ -389,6 +389,11 @@ body,
 .agent-chat-modal-backdrop .agent-chat-modal-shell {
   display: contents;
 }
+.agent-chat-modal-backdrop .agent-chat-modal-shell > .ant-modal-root {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
 .agent-chat-modal-backdrop .agent-chat-modal-close {
   position: absolute;
   z-index: 2;
