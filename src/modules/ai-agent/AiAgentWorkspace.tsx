@@ -12,7 +12,9 @@ import {
   ClockCircleOutlined,
   CloseCircleOutlined,
   DeleteOutlined,
+  DragOutlined,
   InboxOutlined,
+  ExpandOutlined,
   MoreOutlined,
   PaperClipOutlined,
   PlusOutlined,
@@ -42,9 +44,13 @@ import { listAgentFunctionSkillOptions } from '../../lib/agentFunctionSkillApi'
 import { buildBubbleItemKey } from '../../lib/chatBubble'
 import { MAX_LIVE_CHAT_MESSAGES, releaseChatStore } from '../../lib/chatSession'
 import {
-  createAiAgentProvider,
   createChatMessage,
+  disposeAiAgentSessionProvider,
+  getAiAgentSessionProvider,
   normalizePersistedMessage,
+  releaseAiAgentSessionProviderReference,
+  retainAiAgentSessionProvider,
+  subscribeAiAgentSessionProviderSettled,
   type ChatInput,
 } from '../../lib/aiAgentProvider'
 import {
@@ -100,22 +106,39 @@ interface PendingChatAttachment {
   status: 'uploading' | 'done'
 }
 
-export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
+interface AiAgentWorkspaceProps {
+  embedded?: boolean
+  compact?: boolean
+  preferredSessionId?: string
+  onActiveSessionChange?: (sessionId: string) => void
+  onCloseCompact?: () => void
+  onOpenLarge?: () => void
+}
+
+export function AiAgentWorkspace({
+  embedded = false,
+  compact = false,
+  preferredSessionId = '',
+  onActiveSessionChange,
+  onCloseCompact,
+  onOpenLarge,
+}: AiAgentWorkspaceProps) {
   const { currentUser } = useAuth()
   const { getModuleNav } = useNavMenus()
   const navMenus = getModuleNav('ai-agent')
   const location = useLocation()
   const navigate = useNavigate()
   const { viewKey: urlViewKey, sessionId: urlSessionId } = parseAiAgentPath(location.pathname)
+  const isOverlay = embedded || compact
   const activeView = useMemo(() => {
-    if (embedded) {
+    if (embedded || compact) {
       return 'chat'
     }
     if (urlViewKey && findNavMenuByViewKey(navMenus, urlViewKey)) {
       return urlViewKey
     }
     return pickDefaultViewKey(navMenus, 'chat')
-  }, [embedded, navMenus, urlViewKey])
+  }, [compact, embedded, navMenus, urlViewKey])
   const sideNavMenus = useMemo(
     () => navMenus.filter((item) => item.viewKey !== 'chat'),
     [navMenus],
@@ -302,10 +325,10 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
       return
     }
     const defaultViewKey = pickDefaultViewKey(navMenus, 'chat')
-    if (!embedded && (!urlViewKey || !findNavMenuByViewKey(navMenus, urlViewKey))) {
+    if (!isOverlay && (!urlViewKey || !findNavMenuByViewKey(navMenus, urlViewKey))) {
       navigate(buildAiAgentPath(defaultViewKey), { replace: true })
     }
-  }, [embedded, navMenus, navigate, urlViewKey])
+  }, [isOverlay, navMenus, navigate, urlViewKey])
   const messageStageRef = useRef<HTMLDivElement | null>(null)
   const preserveScrollOnPrependRef = useRef(false)
   const switchedSessionRef = useRef(false)
@@ -324,11 +347,17 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
 
   const activeConversationSessionId = String(activeConversationKey || '')
   const activeSessionId =
-    activeView === 'chat' && urlSessionId ? urlSessionId : activeConversationSessionId
+    activeView === 'chat' && !isOverlay && urlSessionId ? urlSessionId : activeConversationSessionId
+
+  useEffect(() => {
+    if (activeSessionId) {
+      onActiveSessionChange?.(activeSessionId)
+    }
+  }, [activeSessionId, onActiveSessionChange])
   const provider = useMemo(
     () => (
       activeSessionId
-        ? createAiAgentProvider(
+        ? getAiAgentSessionProvider(
           activeSessionId,
           () => resolveStreamModelId(autoModelRef.current, selectedModelIdRef.current),
           () => ({}),
@@ -341,6 +370,19 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId
   }, [activeSessionId])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+    retainAiAgentSessionProvider(activeSessionId)
+    return () => releaseAiAgentSessionProviderReference(activeSessionId)
+  }, [activeSessionId])
+
+  useEffect(() => subscribeAiAgentSessionProviderSettled((sessionId) => {
+    disposeAiAgentSessionProvider(sessionId)
+    releaseChatStore(sessionId)
+  }), [])
 
   const {
     messages,
@@ -401,6 +443,10 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   const todoDockData = useMemo(
     () => buildTodoDockData(messages.map((item) => item.message)),
     [messages],
+  )
+  const compactTodoTasks = useMemo(
+    () => buildCompactTodoTasks(messages.map((item) => item.message), todoDockData.tasks),
+    [messages, todoDockData.tasks],
   )
   const todoStatusSummary = useMemo(
     () => buildTodoStatusSummary(todoDockData.tasks),
@@ -467,11 +513,16 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
 
   useEffect(() => {
     const chatKey = activeSessionId
-    if (!chatKey) {
+    const chatProvider = provider
+    if (!chatKey || !chatProvider) {
       return
     }
     return () => {
-      provider?.request.abort()
+      // A running provider owns the live message store until its stream finishes.
+      if (chatProvider.request.isRequesting) {
+        return
+      }
+      disposeAiAgentSessionProvider(chatKey)
       releaseChatStore(chatKey)
     }
   }, [activeSessionId, provider])
@@ -481,13 +532,13 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   const syncBottomStateEvent = useEffectEvent(syncBottomState)
 
   useEffect(() => {
-    if (embedded || activeView !== 'chat' || booting || !urlSessionId) {
+    if (isOverlay || activeView !== 'chat' || booting || !urlSessionId) {
       return
     }
     if (urlSessionId !== activeSessionId) {
       setActiveConversationKey(urlSessionId)
     }
-  }, [activeView, activeSessionId, booting, embedded, setActiveConversationKey, urlSessionId])
+  }, [activeView, activeSessionId, booting, isOverlay, setActiveConversationKey, urlSessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -500,11 +551,13 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
         }
         if (nextSessions.length > 0) {
           const targetSessionId =
-            urlSessionId && nextSessions.some((session) => session.id === urlSessionId)
+            isOverlay && preferredSessionId && nextSessions.some((session) => session.id === preferredSessionId)
+              ? preferredSessionId
+              : urlSessionId && nextSessions.some((session) => session.id === urlSessionId)
               ? urlSessionId
               : nextSessions[0].id
           setActiveConversationKey(targetSessionId)
-          if (!embedded && activeView === 'chat' && !urlSessionId) {
+          if (!isOverlay && activeView === 'chat' && !urlSessionId) {
             navigate(buildAiAgentPath('chat', targetSessionId), { replace: true })
           }
         } else {
@@ -525,7 +578,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     return () => {
       cancelled = true
     }
-  }, [activeView, embedded, navigate, setActiveConversationKey, urlSessionId])
+  }, [activeView, isOverlay, navigate, preferredSessionId, setActiveConversationKey, urlSessionId])
 
   useEffect(() => {
     switchedSessionRef.current = true
@@ -590,7 +643,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
     addConversation({ key: session.id, label: session.title }, 'prepend')
     setMessages([])
     setActiveConversationKey(session.id)
-    if (!embedded) {
+    if (!isOverlay) {
       navigate(buildAiAgentPath('chat', session.id))
     }
     setDraft('')
@@ -672,7 +725,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
         setMessages([])
         const nextActiveSessionId = remainingSessions[0]?.id || ''
         setActiveConversationKey(nextActiveSessionId)
-        if (!embedded && activeView === 'chat') {
+        if (!isOverlay && activeView === 'chat') {
           navigate(
             nextActiveSessionId
               ? buildAiAgentPath('chat', nextActiveSessionId)
@@ -1215,8 +1268,8 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <>
-      <div className={`agent-layout-shell${embedded ? ' agent-layout-embedded' : ''}`}>
-      <aside className="session-rail rail">
+      <div className={`agent-layout-shell${embedded ? ' agent-layout-embedded' : ''}${compact ? ' agent-layout-compact' : ''}`}>
+      {!compact ? <aside className="session-rail rail">
         {!embedded ? <nav className="agent-sidebar-nav" aria-label="Agent 功能">
           {sideNavMenus.map((item) => {
             const viewKey = item.viewKey || item.code
@@ -1266,7 +1319,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
           onActiveChange={(key) => {
             setDraft('')
             const sessionId = String(key)
-            if (!embedded) {
+            if (!isOverlay) {
               navigate(buildAiAgentPath('chat', sessionId))
             }
             setActiveConversationKey(sessionId)
@@ -1274,7 +1327,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
           className="conversation-list"
         />
         </section>
-      </aside>
+      </aside> : null}
 
       {activeView === 'toolbox' ? (
         <AgentToolboxPanel
@@ -1288,7 +1341,80 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
         <AgentMySpacePanel />
       ) : activeView === 'chat' ? (
         <main className="agent-stage chat-stage">
-          {embedded ? (
+          {compact ? (
+            <header className="agent-compact-chat-header">
+              <Dropdown
+                trigger={['click']}
+                placement="bottomLeft"
+                overlayClassName="agent-compact-session-menu"
+                menu={{
+                  selectedKeys: activeSessionId ? [activeSessionId] : [],
+                  items: [
+                    {
+                      key: 'create-session',
+                      icon: <PlusOutlined />,
+                      label: '新建会话',
+                      disabled: isRequesting,
+                      className: 'agent-compact-session-create',
+                    },
+                    { type: 'divider' },
+                    ...sessions.map((session) => ({
+                      key: session.id,
+                      label: (
+                        <span className="agent-compact-session-menu-item">
+                          <strong>{session.title}</strong>
+                          <em>{formatSessionUpdatedAt(session.updatedAt)}</em>
+                        </span>
+                      ),
+                    })),
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === 'create-session') {
+                      void handleCreateSession()
+                      return
+                    }
+                    setDraft('')
+                    setActiveConversationKey(String(key))
+                  },
+                }}
+              >
+                <button
+                  type="button"
+                  className="agent-compact-session-switch"
+                  aria-label="切换会话"
+                  title="切换会话"
+                >
+                  <DragOutlined />
+                </button>
+              </Dropdown>
+              <div className="agent-compact-drag-handle" title="拖动对话窗口">
+                <strong>{activeSession?.title || '新对话'}</strong>
+              </div>
+              <span className={`agent-compact-chat-status${isRequesting ? ' is-streaming' : ''}`}>
+                {isRequesting ? '回复中' : '已就绪'}
+              </span>
+              <Tooltip title="切换为大屏模式">
+                <Button
+                  type="text"
+                  shape="circle"
+                  className="agent-compact-header-action"
+                  icon={<ExpandOutlined />}
+                  aria-label="切换为大屏模式"
+                  onClick={onOpenLarge}
+                />
+              </Tooltip>
+              <Tooltip title="关闭 Agent 对话">
+                <Button
+                  type="text"
+                  shape="circle"
+                  className="agent-compact-header-action"
+                  icon={<CloseOutlined />}
+                  aria-label="关闭 Agent 对话"
+                  onClick={onCloseCompact}
+                />
+              </Tooltip>
+            </header>
+          ) : embedded ? (
             <header className="agent-modal-chat-header">
               <div className="agent-modal-chat-title">
                 <strong>{activeSession?.title || '新对话'}</strong>
@@ -1324,18 +1450,19 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
             ) : messages.length === 0 ? (
               <div className="welcome-wrap">
                 <Welcome
-                  title="开始一段新的 Agent 对话"
-                  description="当前模块只承载 ai-agent 聊天能力：会话、历史消息、流式输出、思考过程与工具调用展示。"
+                  title={compact ? '开始新对话' : '开始一段新的 Agent 对话'}
+                  description={compact ? '直接输入问题，或通过标题左侧切换会话。' : '当前模块只承载 ai-agent 聊天能力：会话、历史消息、流式输出、思考过程与工具调用展示。'}
                 />
                 <Prompts
                   items={promptItems}
+                  vertical={compact}
                   onItemClick={(info) => {
                     const value = String(info.data.label)
                     setDraft(value)
                     void handleSubmit(value)
                   }}
                 />
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从左侧选择旧会话，或直接发起一个新问题。" />
+                {compact ? null : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从左侧选择旧会话，或直接发起一个新问题。" />}
               </div>
             ) : (
               <>
@@ -1384,6 +1511,11 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
             ) : null}
+            {compact && compactTodoTasks.length > 0 ? (
+              <section className="agent-compact-todo-panel" aria-label="待办列表">
+                <TodoDock tasks={compactTodoTasks} loading={isRequesting} compact />
+              </section>
+            ) : null}
             {error ? <p className="error-banner inline-error">{error}</p> : null}
 
             <footer className="composer-shell" ref={composerShellRef}>
@@ -1410,7 +1542,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
                 loading={isRequesting}
                 disabled={booting || uploadingAttachment}
                 placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"
-                autoSize={{ minRows: 3, maxRows: embedded ? 7 : 8 }}
+                autoSize={{ minRows: compact ? 2 : 3, maxRows: embedded ? 7 : 8 }}
                 className={`chat-sender${selectedSkillIds.length > 0 || selectedFunctionSkillIds.length > 0 || selectedMCPIds.length > 0 ? ' has-selected-skill' : ''}`}
                 slotConfig={EMPTY_SLOT_CONFIG}
                 suffix={false}
@@ -1554,7 +1686,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
         </main>
       ) : null}
 
-      {activeView === 'chat' && embedded ? (
+      {activeView === 'chat' && embedded && !compact ? (
       <aside className="session-info-rail rail agent-modal-todo-rail">
         <header className="agent-modal-context-header">
           <Tooltip title="工具箱与我的空间">
@@ -1695,7 +1827,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
           )}
         </section>
       </aside>
-      ) : activeView === 'chat' ? (
+      ) : activeView === 'chat' && !compact ? (
       <aside className="session-info-rail rail">
         <div className="session-info-panel">
           <div className="session-info-card">
@@ -1874,6 +2006,7 @@ export function AiAgentWorkspace({ embedded = false }: { embedded?: boolean }) {
   }
 
   function clearSessionClientCache(sessionId: string) {
+    disposeAiAgentSessionProvider(sessionId)
     releaseChatStore(sessionId)
   }
 }
@@ -1947,6 +2080,27 @@ function buildTodoDockData(messages: ChatMessage[]) {
         return left.order - right.order
       }),
   }
+}
+
+function buildCompactTodoTasks(messages: ChatMessage[], tasks: TodoTask[]) {
+  let latestTodoMessageIndex = -1
+  let latestUserMessageIndex = -1
+
+  messages.forEach((message, index) => {
+    if (message.role === 'user') {
+      latestUserMessageIndex = index
+      return
+    }
+    if (message.role === 'assistant' && message.parts.some(
+      (part) => part.type === 'tool' && isTaskTool(part.toolName),
+    )) {
+      latestTodoMessageIndex = index
+    }
+  })
+
+  // The compact panel tracks the current turn only. Once a later user prompt
+  // starts without new task-tool activity, completed work moves to history.
+  return latestTodoMessageIndex >= latestUserMessageIndex ? tasks : []
 }
 
 function buildTodoStatusSummary(tasks: TodoTask[]) {
