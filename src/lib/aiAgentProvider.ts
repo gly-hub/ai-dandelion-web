@@ -34,6 +34,14 @@ export class AiAgentStreamProvider extends AbstractChatProvider<ChatMessage, Cha
     this.getRuntimeConfig = options.getRuntimeConfig || (() => ({}))
   }
 
+  updateRuntimeResolvers(
+    getModelId?: () => string | undefined,
+    getRuntimeConfig?: () => AgentRuntimeConfig,
+  ) {
+    this.getModelId = getModelId || (() => undefined)
+    this.getRuntimeConfig = getRuntimeConfig || (() => ({}))
+  }
+
   transformParams(
     requestParams: Partial<ChatInput>,
     options: XRequestOptions<ChatInput, StreamChunk, ChatMessage>,
@@ -178,12 +186,78 @@ export function createAiAgentProvider(
   sessionId: string,
   getModelId?: () => string | undefined,
   getRuntimeConfig?: () => AgentRuntimeConfig,
+  onRequestSettled?: () => void,
 ) {
   return new AiAgentStreamProvider({
     getModelId,
     getRuntimeConfig,
-    request: new RealtimeRequest('/realtime/ws', sessionId),
+    request: new RealtimeRequest('/realtime/ws', sessionId, onRequestSettled),
   })
+}
+
+// The chat UI can unmount while switching sessions or display modes. Keep one
+// provider per Agent session so an in-flight stream remains connected to its store.
+const sessionProviders = new Map<string, AiAgentStreamProvider>()
+const visibleSessionProviderCounts = new Map<string, number>()
+const sessionProviderSettledListeners = new Set<(sessionId: string) => void>()
+
+export function getAiAgentSessionProvider(
+  sessionId: string,
+  getModelId?: () => string | undefined,
+  getRuntimeConfig?: () => AgentRuntimeConfig,
+) {
+  const existingProvider = sessionProviders.get(sessionId)
+  if (existingProvider) {
+    existingProvider.updateRuntimeResolvers(getModelId, getRuntimeConfig)
+    return existingProvider
+  }
+
+  const provider = createAiAgentProvider(sessionId, getModelId, getRuntimeConfig, () => {
+    window.setTimeout(() => {
+      const currentProvider = sessionProviders.get(sessionId)
+      if (!currentProvider || currentProvider.request.isRequesting || visibleSessionProviderCounts.has(sessionId)) {
+        return
+      }
+      sessionProviderSettledListeners.forEach((listener) => listener(sessionId))
+    }, 0)
+  })
+  sessionProviders.set(sessionId, provider)
+  return provider
+}
+
+export function retainAiAgentSessionProvider(sessionId: string) {
+  if (!sessionId) {
+    return
+  }
+  visibleSessionProviderCounts.set(sessionId, (visibleSessionProviderCounts.get(sessionId) || 0) + 1)
+}
+
+export function releaseAiAgentSessionProviderReference(sessionId: string) {
+  const count = visibleSessionProviderCounts.get(sessionId)
+  if (!count || count === 1) {
+    visibleSessionProviderCounts.delete(sessionId)
+    return
+  }
+  visibleSessionProviderCounts.set(sessionId, count - 1)
+}
+
+export function subscribeAiAgentSessionProviderSettled(listener: (sessionId: string) => void) {
+  sessionProviderSettledListeners.add(listener)
+  return () => {
+    sessionProviderSettledListeners.delete(listener)
+  }
+}
+
+export function disposeAiAgentSessionProvider(sessionId: string) {
+  const provider = sessionProviders.get(sessionId)
+  provider?.request.abort()
+  sessionProviders.delete(sessionId)
+}
+
+export function disposeAllAiAgentSessionProviders() {
+  for (const sessionId of sessionProviders.keys()) {
+    disposeAiAgentSessionProvider(sessionId)
+  }
 }
 
 type RealtimeEnvelope = {
@@ -364,10 +438,12 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
   private updateTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly sessionId: string
+  private readonly onRequestSettled?: () => void
 
-  constructor(baseURL: string, sessionId: string) {
+  constructor(baseURL: string, sessionId: string, onRequestSettled?: () => void) {
     super(baseURL, { manual: true })
     this.sessionId = sessionId
+    this.onRequestSettled = onRequestSettled
   }
 
   get asyncHandler(): Promise<unknown> {
@@ -401,6 +477,7 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
       sharedPending.delete(this.requestId)
       this.requesting = false
       callbacks?.onError(error)
+      this.onRequestSettled?.()
     })
     return true
   }
@@ -418,6 +495,7 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
     // and only clears its loading state. AbortError invokes requestFallback,
     // which would replace the content with a cancellation placeholder.
     callbacks?.onSuccess?.([], new Headers())
+    this.onRequestSettled?.()
   }
 
   private handleEvent(event: MessageEvent<string>) {
@@ -432,6 +510,7 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
       sharedPending.delete(this.requestId)
       this.requesting = false
       callbacks?.onError(new Error(String((envelope.payload as { message?: string })?.message || '实时请求失败')))
+      this.onRequestSettled?.()
       return
     }
     const payload = (envelope.payload || {}) as Record<string, unknown>
@@ -444,6 +523,7 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
       sharedListeners.delete(this.requestId)
       sharedPending.delete(this.requestId)
       callbacks?.onSuccess?.([chunk], new Headers())
+      this.onRequestSettled?.()
       return
     }
     this.queueUpdate(chunk)

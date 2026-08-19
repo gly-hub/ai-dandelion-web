@@ -413,6 +413,24 @@ body,
   cursor: pointer;
 }
 .agent-chat-modal-backdrop .agent-chat-modal-close:hover { color: #2477f5; background: #f1f7ff; }
+.agent-chat-modal-backdrop .agent-chat-modal-mode-button.ant-btn {
+  position: absolute;
+  z-index: 2;
+  top: 11px;
+  right: 49px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: #5d799a;
+  background: #fff;
+}
+.agent-chat-modal-backdrop .agent-chat-modal-mode-button.ant-btn:hover,
+.agent-chat-modal-backdrop .agent-chat-modal-mode-button.ant-btn:focus-visible { color: #2477f5; background: #f1f7ff; }
 .agent-chat-modal-backdrop .agent-layout-shell.agent-layout-embedded {
   grid-column: 1 / -1;
   display: grid !important;
@@ -1306,4 +1324,388 @@ body,
   .agent-chat-modal-backdrop .session-rail { display: none !important; }
   .agent-chat-modal-backdrop .message-stage { padding: 22px 20px !important; }
   .agent-chat-modal-backdrop .agent-modal-chat-title span { display: none; }
+}
+
+/* Compact mode is deliberately pointer-transparent outside its own window. */
+.agent-chat-floating-layer {
+  position: fixed;
+  z-index: 900;
+  inset: 0;
+  pointer-events: none;
+}
+
+.agent-chat-floating {
+  position: absolute;
+  display: flex;
+  width: min(441px, calc(100vw - 24px));
+  height: min(798px, calc(100vh - 24px));
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: auto;
+  border: 1px solid #d5e3f4;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(22, 65, 122, .22);
+  will-change: transform;
+}
+
+.console-app .agent-chat-floating .agent-layout-shell.agent-layout-compact {
+  display: flex !important;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff !important;
+}
+
+.console-app .agent-chat-floating .session-info-rail {
+  display: none !important;
+}
+
+.console-app .agent-chat-floating .agent-stage.chat-stage {
+  display: flex !important;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #fff !important;
+}
+
+.console-app .agent-compact-chat-header {
+  display: flex;
+  flex: 0 0 44px;
+  align-items: center;
+  min-width: 0;
+  height: 44px;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid #e5edf7;
+  background: #fff;
+}
+
+.console-app .agent-compact-drag-handle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.console-app .agent-compact-drag-handle:active { cursor: grabbing; }
+.console-app .agent-compact-drag-icon { color: #7a91ac; font-size: 14px; }
+.console-app .agent-compact-session-switch {
+  display: grid;
+  flex: 0 0 28px;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: #5d799a;
+  background: transparent;
+  cursor: pointer;
+}
+.console-app .agent-compact-session-switch:hover,
+.console-app .agent-compact-session-switch:focus-visible { color: #2477f5; background: #eef6ff; outline: 0; }
+.agent-compact-session-menu .ant-dropdown-menu {
+  width: min(300px, calc(100vw - 32px));
+  max-height: 320px;
+  padding: 6px;
+  overflow: auto;
+  border: 1px solid #d6e2ef;
+  border-radius: 7px;
+  box-shadow: 0 10px 24px rgba(22, 65, 122, .16);
+}
+.agent-compact-session-menu .ant-dropdown-menu-item {
+  min-height: 42px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  transition: color .18s ease, background .18s ease;
+}
+.agent-compact-session-menu .ant-dropdown-menu-item-divider { margin: 5px 2px; border-color: #e5edf7; }
+.agent-compact-session-menu .ant-dropdown-menu-item.agent-compact-session-create {
+  min-height: 36px;
+  color: #1768dd;
+  font-size: 12px;
+  font-weight: 600;
+  background: #edf6ff;
+}
+.agent-compact-session-menu .ant-dropdown-menu-item.agent-compact-session-create:hover:not(.ant-dropdown-menu-item-disabled),
+.agent-compact-session-menu .ant-dropdown-menu-item.agent-compact-session-create.ant-dropdown-menu-item-selected {
+  color: #0f5fc7;
+  background: #deefff;
+}
+.agent-compact-session-menu .ant-dropdown-menu-item.ant-dropdown-menu-item-selected:not(.agent-compact-session-create) {
+  background: #edf6ff;
+}
+.agent-compact-session-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.agent-compact-session-menu-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #355675;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-compact-session-menu-item em {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #7c91a8;
+  font-size: 10px;
+  font-style: normal;
+}
+.agent-compact-session-menu .ant-dropdown-menu-item-selected .agent-compact-session-menu-item strong { color: #1768dd; }
+.console-app .agent-compact-drag-handle strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #274a78;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-app .agent-compact-chat-status {
+  flex: 0 0 auto;
+  margin-right: 3px;
+  color: #5b7797;
+  font-size: 10px;
+}
+.console-app .agent-compact-chat-status.is-streaming { color: #2477f5; }
+
+.console-app .agent-compact-header-action.ant-btn {
+  display: grid;
+  flex: 0 0 28px;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 !important;
+  border-radius: 5px;
+  color: #5d799a;
+}
+.console-app .agent-compact-header-action.ant-btn:hover,
+.console-app .agent-compact-header-action.ant-btn:focus-visible,
+.console-app .agent-compact-header-action.ant-btn.is-active {
+  color: #2477f5;
+  background: #eef6ff;
+}
+
+.console-app .agent-compact-todo-panel {
+  flex: 0 0 auto;
+  max-height: 176px;
+  padding: 0 0 4px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+}
+
+.console-app .agent-compact-todo-panel .todo-dock.todo-dock-compact {
+  gap: 6px;
+  height: 158px;
+  min-height: 0;
+  max-height: 158px;
+}
+.console-app .agent-compact-todo-panel .todo-dock-compact.is-collapsed { height: 24px; min-height: 24px; max-height: 24px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-header { align-items: center; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-title { font-size: 12px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-summary { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-collapsed { min-height: 0; max-height: 34px; gap: 5px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-collapsed[hidden] { display: none; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-inline-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-expanded { gap: 5px; padding-right: 2px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-list { gap: 5px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-item { padding: 6px 8px; border-radius: 6px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-item-main strong { font-size: 11px; line-height: 16px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact .todo-item-state { flex: 0 0 auto; font-size: 10px !important; }
+
+.console-app .agent-chat-floating .agent-stage .message-stage {
+  flex: 1 1 0 !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  padding: 14px 14px 0 !important;
+  overflow: auto !important;
+  background: #fff !important;
+  overscroll-behavior: contain;
+  scrollbar-color: #b7cee7 transparent;
+  scrollbar-width: thin;
+}
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar { width: 6px; }
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar-track { background: transparent; }
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #b7cee7;
+  background-clip: padding-box;
+}
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar-thumb:hover {
+  background: #7fa9d6;
+  background-clip: padding-box;
+}
+.console-app .agent-chat-floating .agent-stage .bubble-list { width: 100% !important; }
+.console-app .agent-chat-floating .welcome-wrap {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 0 12px;
+  align-content: start;
+  gap: 12px;
+  place-items: stretch;
+  text-align: left;
+}
+.console-app .agent-chat-floating .welcome-wrap .ant-welcome {
+  padding: 14px;
+  border-radius: 8px;
+  background: #f7fbff;
+  box-shadow: none;
+}
+.console-app .agent-chat-floating .welcome-wrap .ant-welcome-title { font-size: 18px; line-height: 1.35; }
+.console-app .agent-chat-floating .welcome-wrap .ant-welcome-description { font-size: 12px; line-height: 1.55; }
+.console-app .agent-chat-floating .welcome-wrap .ant-prompts { width: 100%; }
+.console-app .agent-chat-floating .welcome-wrap .ant-prompts-list,
+.console-app .agent-chat-floating .welcome-wrap .ant-prompts-list-vertical { width: 100%; }
+.console-app .agent-chat-floating .welcome-wrap .ant-prompts-item { width: 100%; min-width: 0; padding: 9px 11px; border-radius: 6px; }
+.console-app .agent-chat-floating .welcome-wrap .ant-prompts-label { font-size: 12px; line-height: 1.45; }
+.console-app .agent-chat-floating .bubble-list .ant-bubble-end { width: 82% !important; max-width: 82% !important; }
+.console-app .agent-chat-floating .message-bubble-shell,
+.console-app .agent-chat-floating .message-bubble-shell * { min-width: 0; overflow-wrap: anywhere; }
+.console-app .agent-chat-floating .message-bubble-shell pre { max-width: 100%; overflow: auto; }
+.console-app .agent-chat-floating .agent-stage .composer-stack {
+  position: relative;
+  gap: 4px;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 4px 10px 10px !important;
+  background: transparent !important;
+}
+.console-app .agent-chat-floating .agent-stage .composer-shell { width: 100% !important; padding: 0 !important; }
+.console-app .agent-chat-floating .agent-stage .chat-sender,
+.console-app .agent-chat-floating .agent-stage .chat-sender.ant-sender { border-radius: 7px !important; box-shadow: none !important; }
+.console-app .agent-chat-floating .agent-stage .chat-sender .ant-sender-input { min-height: 34px; padding: 7px 9px 3px !important; }
+.console-app .agent-chat-floating .agent-stage .scroll-to-bottom-button.ant-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid #c7dcef !important;
+  border-radius: 50%;
+  color: #2477f5;
+  background: #fff !important;
+  box-shadow: 0 2px 8px rgba(34, 83, 144, 0.12) !important;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+.console-app .agent-chat-floating .agent-stage .scroll-to-bottom-button.ant-btn:hover,
+.console-app .agent-chat-floating .agent-stage .scroll-to-bottom-button.ant-btn:focus-visible {
+  border-color: #8bb9e8 !important;
+  color: #1768dd;
+  background: #f4f9ff !important;
+  box-shadow: 0 3px 10px rgba(34, 83, 144, 0.16) !important;
+}
+.console-app .agent-chat-floating .agent-stage .scroll-to-bottom-wrap {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  right: auto;
+  bottom: calc(100% + 6px);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  transform: translateX(-50%);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.console-app .agent-chat-floating .tool-card .collapsible-header {
+  min-width: 0;
+  gap: 7px;
+}
+.console-app .agent-chat-floating .tool-card .summary-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.console-app .agent-chat-floating .tool-card .summary-main .summary-icon { flex: 0 0 auto; }
+.console-app .agent-chat-floating .tool-card .summary-main strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.console-app .agent-chat-floating .tool-card .summary-side { flex: 0 0 auto; }
+.console-app .agent-chat-floating .agent-stage .chat-sender-toolbar {
+  gap: 6px;
+  padding: 0 8px 8px !important;
+}
+.console-app .agent-chat-floating .agent-stage .chat-skill-selector-trigger,
+.console-app .agent-chat-floating .agent-stage .chat-attachment-trigger,
+.console-app .agent-chat-floating .agent-stage .chat-model-selector-trigger {
+  height: 28px;
+  border: 1px solid #d6e2ef !important;
+  border-radius: 6px !important;
+  color: #52708f !important;
+  background: #f8fbff !important;
+  box-shadow: none !important;
+}
+.console-app .agent-chat-floating .agent-stage .chat-skill-selector-trigger,
+.console-app .agent-chat-floating .agent-stage .chat-attachment-trigger {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  padding: 0 !important;
+}
+.console-app .agent-chat-floating .agent-stage .chat-model-selector-trigger {
+  gap: 4px;
+  max-width: min(156px, 42vw);
+  padding: 0 8px !important;
+  font-size: 11px;
+}
+.console-app .agent-chat-floating .agent-stage .chat-skill-selector-trigger:hover:not(:disabled),
+.console-app .agent-chat-floating .agent-stage .chat-skill-selector-trigger.is-open,
+.console-app .agent-chat-floating .agent-stage .chat-skill-selector-trigger.has-selection,
+.console-app .agent-chat-floating .agent-stage .chat-attachment-trigger:hover:not(:disabled),
+.console-app .agent-chat-floating .agent-stage .chat-attachment-trigger:focus-visible,
+.console-app .agent-chat-floating .agent-stage .chat-model-selector-trigger:hover:not(:disabled),
+.console-app .agent-chat-floating .agent-stage .chat-model-selector-trigger.is-open {
+  border-color: #a9c9ed !important;
+  color: #2477f5 !important;
+  background: #eef6ff !important;
+}
+.console-app .agent-chat-floating .agent-stage .chat-sender .ant-btn-primary {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: #2477f5 !important;
+  box-shadow: none !important;
+}
+.console-app .agent-chat-floating .agent-stage .chat-sender .ant-btn-primary:hover:not(:disabled) { background: #1768dd !important; }
+.console-app .agent-chat-floating .agent-stage .chat-sender .ant-btn-primary:disabled { background: #c9d9eb !important; }
+.console-app .todo-dock-collapsed[hidden] { display: none !important; }
+.console-app .todo-dock-expanded[hidden] { display: none !important; }
+
+@media (max-width: 480px) {
+  .agent-chat-floating { border-radius: 6px; }
+  .console-app .agent-compact-chat-status { display: none; }
 }

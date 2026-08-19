@@ -82,7 +82,7 @@ export function MessageBubble({ message, status, messageKey, sessionId }: Messag
                   <span className={`summary-icon tool-icon ${part.status === 'error' ? 'error' : ''}`}>
                     {part.status === 'error' ? '✕' : '✓'}
                   </span>
-                  <strong>{part.toolName || '执行命令'}</strong>
+                  <strong title={part.toolName || '执行命令'}>{part.toolName || '执行命令'}</strong>
                 </span>
                 <span className="summary-side">
                   <span className="tool-state">{toolStatusLabel(part.status)}</span>
