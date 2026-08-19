@@ -6,10 +6,11 @@ import type { TodoTask } from '../types'
 interface TodoDockProps {
   tasks: TodoTask[]
   loading: boolean
+  compact?: boolean
 }
 
-export function TodoDock({ tasks, loading }: TodoDockProps) {
-  const [collapsed, setCollapsed] = useState(false)
+export function TodoDock({ tasks, loading, compact = false }: TodoDockProps) {
+  const [collapsed, setCollapsed] = useState(compact)
   const summary = useMemo(() => {
     const inProgressCount = tasks.filter((item) => item.status === 'in_progress').length
     const pendingCount = tasks.filter((item) => item.status === 'pending').length
@@ -34,7 +35,7 @@ export function TodoDock({ tasks, loading }: TodoDockProps) {
   )
 
   return (
-    <div className={`todo-dock${collapsed ? ' is-collapsed' : ''}`}>
+    <div className={`todo-dock${compact ? ' todo-dock-compact' : ''}${collapsed ? ' is-collapsed' : ''}`}>
       <button
         type="button"
         className="todo-dock-header"
@@ -53,7 +54,7 @@ export function TodoDock({ tasks, loading }: TodoDockProps) {
         </span>
       </button>
 
-      <div className="todo-dock-collapsed">
+      <div className="todo-dock-collapsed" hidden={!collapsed}>
         {activeTasks.length === 0 ? (
           <span className="todo-empty">当前没有执行中的任务</span>
         ) : (
@@ -77,7 +78,7 @@ export function TodoDock({ tasks, loading }: TodoDockProps) {
                     <span className="todo-item-index">{task.order}.</span>
                     <span>{task.title}</span>
                   </strong>
-                  {task.description ? <p>{task.description}</p> : null}
+                  {task.description && !compact ? <p>{task.description}</p> : null}
                 </div>
 
                 <Tag bordered={false} className={`todo-item-state ${task.status}`}>

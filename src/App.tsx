@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { App as AntApp, Avatar, Badge, Button, Empty, List, Popover, Space, Spin, Tag, Tooltip } from 'antd'
-import { BellOutlined, CloudSyncOutlined, LogoutOutlined, MessageOutlined, QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { App as AntApp, Avatar, Badge, Button, Dropdown, Empty, List, Popover, Space, Spin, Tag, Tooltip } from 'antd'
+import { BellOutlined, CloudSyncOutlined, DragOutlined, ExpandOutlined, LogoutOutlined, MessageOutlined, QuestionCircleOutlined, ReloadOutlined, ShrinkOutlined } from '@ant-design/icons'
 import { XProvider } from '@ant-design/x'
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { TabNavigationProvider } from './contexts/TabNavigationContext'
 import { NavMenuProvider, useNavMenus } from './contexts/NavMenuContext'
@@ -11,6 +11,7 @@ import { LoginPage } from './modules/system/LoginPage'
 import { AiAgentWorkspace } from './modules/ai-agent/AiAgentWorkspace'
 import { FuncOperationWorkspace } from './modules/func-operation/FuncOperationWorkspace'
 import {
+  disposeAllAiAgentSessionProviders,
   ensureRealtimeConnection,
   reconnectRealtimeConnection,
   stopRealtimeConnection,
@@ -69,13 +70,18 @@ function ConsoleAppContent() {
   const navigate = useNavigate()
   const activeModule = getModuleFromPath(location.pathname)
   const immersiveFuncEditor = isFuncEditorImmersivePath(location.pathname)
-  const [chatOpen, setChatOpen] = useState(false)
+  const [chatMode, setChatMode] = useState<'large' | 'compact' | null>(null)
+  const [chatSessionId, setChatSessionId] = useState('')
   const [notifications, setNotifications] = useState<SystemNotification[]>([])
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>('connecting')
   const handledNotificationIdsRef = useRef(new Set<string>())
   const handledNotificationEventsRef = useRef(new Set<string>())
   const [viewportSize, setViewportSize] = useState(() => getViewportSize())
+  const closeAgentChat = useCallback(() => {
+    disposeAllAiAgentSessionProviders()
+    setChatMode(null)
+  }, [])
   const immersiveViewportStyle = useMemo<ImmersiveViewportStyle | undefined>(() => {
     if (!immersiveFuncEditor) {
       return undefined
@@ -109,18 +115,18 @@ function ConsoleAppContent() {
   }, [immersiveFuncEditor])
 
   useEffect(() => {
-    if (!chatOpen) {
+    if (!chatMode) {
       return
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setChatOpen(false)
+        closeAgentChat()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [chatOpen])
+  }, [chatMode, closeAgentChat])
 
   useEffect(() => {
     if (!currentUser?.id) return undefined
@@ -192,7 +198,18 @@ function ConsoleAppContent() {
             </div>
             <div className="workspace-topbar-actions">
               <Tooltip title="帮助中心"><Button type="text" shape="circle" icon={<QuestionCircleOutlined />} /></Tooltip>
-              <Tooltip title="打开 Agent 对话"><Button type="text" shape="circle" icon={<MessageOutlined />} onClick={() => setChatOpen(true)} /></Tooltip>
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    { key: 'large', icon: <ExpandOutlined />, label: '以大屏模式打开' },
+                    { key: 'compact', icon: <DragOutlined />, label: '以小屏模式打开' },
+                  ],
+                  onClick: ({ key }) => setChatMode(key as 'large' | 'compact'),
+                }}
+              >
+                <Tooltip title="打开 Agent 对话"><Button type="text" shape="circle" icon={<MessageOutlined />} /></Tooltip>
+              </Dropdown>
               <Popover
                 trigger="click"
                 placement="bottomRight"
@@ -253,26 +270,157 @@ function ConsoleAppContent() {
         </section>
       </main>
 
-      {chatOpen ? (
+      {chatMode === 'large' ? (
         <div
           className="agent-chat-modal-backdrop"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setChatOpen(false)
+              closeAgentChat()
             }
           }}
         >
-          <section className="agent-chat-modal" role="dialog" aria-modal="true" aria-label="AI 对话">
+          <section className="agent-chat-modal" role="dialog" aria-modal="true" aria-label="AI 对话，大屏模式">
             <div className="agent-chat-modal-shell">
-              <button type="button" className="agent-chat-modal-close" aria-label="关闭 Agent 对话" onClick={() => setChatOpen(false)}>×</button>
-              <AiAgentWorkspace embedded />
+              <Tooltip title="切换为小屏模式">
+                <Button
+                  type="text"
+                  shape="circle"
+                  className="agent-chat-modal-mode-button"
+                  icon={<ShrinkOutlined />}
+                  aria-label="切换为小屏模式"
+                  onClick={() => setChatMode('compact')}
+                />
+              </Tooltip>
+              <button type="button" className="agent-chat-modal-close" aria-label="关闭 Agent 对话" onClick={closeAgentChat}>×</button>
+              <AiAgentWorkspace
+                embedded
+                preferredSessionId={chatSessionId}
+                onActiveSessionChange={setChatSessionId}
+              />
             </div>
           </section>
         </div>
       ) : null}
+
+      {chatMode === 'compact' ? (
+        <FloatingAgentChat
+          onClose={closeAgentChat}
+          onOpenLarge={() => setChatMode('large')}
+          preferredSessionId={chatSessionId}
+          onActiveSessionChange={setChatSessionId}
+        />
+      ) : null}
     </div>
   )
+}
+
+interface FloatingAgentChatProps {
+  onClose: () => void
+  onOpenLarge: () => void
+  preferredSessionId: string
+  onActiveSessionChange: (sessionId: string) => void
+}
+
+const COMPACT_CHAT_WIDTH = 441
+const COMPACT_CHAT_HEIGHT = 798
+const COMPACT_CHAT_MARGIN = 12
+const COMPACT_CHAT_INITIAL_TOP = 70
+const COMPACT_CHAT_INITIAL_RIGHT = 24
+
+function FloatingAgentChat({
+  onClose,
+  onOpenLarge,
+  preferredSessionId,
+  onActiveSessionChange,
+}: FloatingAgentChatProps) {
+  const [position, setPosition] = useState(() => getCompactChatInitialPosition())
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null)
+
+  useLayoutEffect(() => {
+    const clampPosition = () => setPosition((current) => clampCompactChatPosition(current))
+    clampPosition()
+    window.addEventListener('resize', clampPosition)
+    window.visualViewport?.addEventListener('resize', clampPosition)
+    return () => {
+      window.removeEventListener('resize', clampPosition)
+      window.visualViewport?.removeEventListener('resize', clampPosition)
+    }
+  }, [])
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement
+    if (!target.closest('.agent-compact-drag-handle') || event.button !== 0) {
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    dragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return
+    }
+    setPosition(clampCompactChatPosition({
+      left: event.clientX - drag.offsetX,
+      top: event.clientY - drag.offsetY,
+    }))
+  }
+
+  const handlePointerEnd = (event: ReactPointerEvent<HTMLElement>) => {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      dragRef.current = null
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  return (
+    <div className="agent-chat-floating-layer" aria-live="polite">
+      <section
+        className="agent-chat-floating"
+        role="dialog"
+        aria-modal="false"
+        aria-label="AI 对话，小屏模式"
+        style={{ transform: `translate3d(${position.left}px, ${position.top}px, 0)` }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+      >
+        <AiAgentWorkspace
+          compact
+          preferredSessionId={preferredSessionId}
+          onActiveSessionChange={onActiveSessionChange}
+          onCloseCompact={onClose}
+          onOpenLarge={onOpenLarge}
+        />
+      </section>
+    </div>
+  )
+}
+
+function getCompactChatInitialPosition() {
+  const viewport = getViewportSize()
+  return clampCompactChatPosition({
+    left: viewport.width - COMPACT_CHAT_WIDTH - COMPACT_CHAT_INITIAL_RIGHT,
+    top: COMPACT_CHAT_INITIAL_TOP,
+  })
+}
+
+function clampCompactChatPosition(position: { left: number; top: number }) {
+  const viewport = getViewportSize()
+  const width = Math.min(COMPACT_CHAT_WIDTH, Math.max(0, viewport.width - COMPACT_CHAT_MARGIN * 2))
+  const height = Math.min(COMPACT_CHAT_HEIGHT, Math.max(0, viewport.height - COMPACT_CHAT_MARGIN * 2))
+  return {
+    left: Math.min(Math.max(COMPACT_CHAT_MARGIN, position.left), Math.max(COMPACT_CHAT_MARGIN, viewport.width - width - COMPACT_CHAT_MARGIN)),
+    top: Math.min(Math.max(COMPACT_CHAT_MARGIN, position.top), Math.max(COMPACT_CHAT_MARGIN, viewport.height - height - COMPACT_CHAT_MARGIN)),
+  }
 }
 
 type ImmersiveViewportStyle = CSSProperties & {
