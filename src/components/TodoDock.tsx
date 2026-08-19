@@ -54,17 +54,19 @@ export function TodoDock({ tasks, loading, compact = false }: TodoDockProps) {
         </span>
       </button>
 
-      <div className="todo-dock-collapsed" hidden={!collapsed}>
-        {activeTasks.length === 0 ? (
-          <span className="todo-empty">当前没有执行中的任务</span>
-        ) : (
-          activeTasks.map((task) => (
-            <Tag key={task.taskId} bordered={false} className="todo-inline-chip">
-              {task.title}
-            </Tag>
-          ))
-        )}
-      </div>
+      {!compact ? (
+        <div className="todo-dock-collapsed" hidden={!collapsed}>
+          {activeTasks.length === 0 ? (
+            <span className="todo-empty">当前没有执行中的任务</span>
+          ) : (
+            activeTasks.map((task) => (
+              <Tag key={task.taskId} bordered={false} className="todo-inline-chip">
+                {task.title}
+              </Tag>
+            ))
+          )}
+        </div>
+      ) : null}
 
       <div className="todo-dock-expanded" hidden={collapsed}>
         {tasks.length === 0 ? (

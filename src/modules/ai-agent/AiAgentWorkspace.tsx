@@ -444,6 +444,10 @@ export function AiAgentWorkspace({
     () => buildTodoDockData(messages.map((item) => item.message)),
     [messages],
   )
+  const compactTodoTasks = useMemo(
+    () => buildCompactTodoTasks(messages.map((item) => item.message), todoDockData.tasks),
+    [messages, todoDockData.tasks],
+  )
   const todoStatusSummary = useMemo(
     () => buildTodoStatusSummary(todoDockData.tasks),
     [todoDockData.tasks],
@@ -1494,11 +1498,6 @@ export function AiAgentWorkspace({
           </section>
 
           <div className="composer-stack">
-            {compact && todoDockData.tasks.length > 0 ? (
-              <section className="agent-compact-todo-panel" aria-label="待办列表">
-                <TodoDock tasks={todoDockData.tasks} loading={isRequesting} compact />
-              </section>
-            ) : null}
             {showScrollToBottom ? (
               <div className="scroll-to-bottom-wrap">
                 <Button
@@ -1511,6 +1510,11 @@ export function AiAgentWorkspace({
                   onClick={handleScrollToBottom}
                 />
               </div>
+            ) : null}
+            {compact && compactTodoTasks.length > 0 ? (
+              <section className="agent-compact-todo-panel" aria-label="待办列表">
+                <TodoDock tasks={compactTodoTasks} loading={isRequesting} compact />
+              </section>
             ) : null}
             {error ? <p className="error-banner inline-error">{error}</p> : null}
 
@@ -2076,6 +2080,27 @@ function buildTodoDockData(messages: ChatMessage[]) {
         return left.order - right.order
       }),
   }
+}
+
+function buildCompactTodoTasks(messages: ChatMessage[], tasks: TodoTask[]) {
+  let latestTodoMessageIndex = -1
+  let latestUserMessageIndex = -1
+
+  messages.forEach((message, index) => {
+    if (message.role === 'user') {
+      latestUserMessageIndex = index
+      return
+    }
+    if (message.role === 'assistant' && message.parts.some(
+      (part) => part.type === 'tool' && isTaskTool(part.toolName),
+    )) {
+      latestTodoMessageIndex = index
+    }
+  })
+
+  // The compact panel tracks the current turn only. Once a later user prompt
+  // starts without new task-tool activity, completed work moves to history.
+  return latestTodoMessageIndex >= latestUserMessageIndex ? tasks : []
 }
 
 function buildTodoStatusSummary(tasks: TodoTask[]) {

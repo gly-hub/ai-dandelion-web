@@ -202,8 +202,8 @@ function ConsoleAppContent() {
                 trigger={['click']}
                 menu={{
                   items: [
-                    { key: 'large', icon: <ExpandOutlined />, label: '以大屏模式打开' },
-                    { key: 'compact', icon: <DragOutlined />, label: '以小屏模式打开' },
+                    { key: 'large', icon: <ExpandOutlined />, label: '大屏' },
+                    { key: 'compact', icon: <DragOutlined />, label: '小屏' },
                   ],
                   onClick: ({ key }) => setChatMode(key as 'large' | 'compact'),
                 }}

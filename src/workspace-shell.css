@@ -1508,7 +1508,7 @@ body,
 .console-app .agent-compact-todo-panel {
   flex: 0 0 auto;
   max-height: 176px;
-  padding: 0 0 8px;
+  padding: 0 0 4px;
   overflow: hidden;
   border: 0;
   background: transparent;
@@ -1520,7 +1520,7 @@ body,
   min-height: 0;
   max-height: 158px;
 }
-.console-app .agent-compact-todo-panel .todo-dock-compact.is-collapsed { height: 46px; min-height: 46px; max-height: 46px; }
+.console-app .agent-compact-todo-panel .todo-dock-compact.is-collapsed { height: 24px; min-height: 24px; max-height: 24px; }
 .console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-header { align-items: center; }
 .console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-title { font-size: 12px; }
 .console-app .agent-compact-todo-panel .todo-dock-compact .todo-dock-summary { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -1541,6 +1541,20 @@ body,
   overflow: auto !important;
   background: #fff !important;
   overscroll-behavior: contain;
+  scrollbar-color: #b7cee7 transparent;
+  scrollbar-width: thin;
+}
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar { width: 6px; }
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar-track { background: transparent; }
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #b7cee7;
+  background-clip: padding-box;
+}
+.console-app .agent-chat-floating .agent-stage .message-stage::-webkit-scrollbar-thumb:hover {
+  background: #7fa9d6;
+  background-clip: padding-box;
 }
 .console-app .agent-chat-floating .agent-stage .bubble-list { width: 100% !important; }
 .console-app .agent-chat-floating .welcome-wrap {
@@ -1572,28 +1586,50 @@ body,
 .console-app .agent-chat-floating .message-bubble-shell * { min-width: 0; overflow-wrap: anywhere; }
 .console-app .agent-chat-floating .message-bubble-shell pre { max-width: 100%; overflow: auto; }
 .console-app .agent-chat-floating .agent-stage .composer-stack {
+  position: relative;
+  gap: 4px;
   width: 100% !important;
   margin: 0 !important;
-  padding: 8px 10px 10px !important;
-  background: #f9fbff !important;
+  padding: 4px 10px 10px !important;
+  background: transparent !important;
 }
 .console-app .agent-chat-floating .agent-stage .composer-shell { width: 100% !important; padding: 0 !important; }
 .console-app .agent-chat-floating .agent-stage .chat-sender,
 .console-app .agent-chat-floating .agent-stage .chat-sender.ant-sender { border-radius: 7px !important; box-shadow: none !important; }
 .console-app .agent-chat-floating .agent-stage .chat-sender .ant-sender-input { min-height: 34px; padding: 7px 9px 3px !important; }
 .console-app .agent-chat-floating .agent-stage .scroll-to-bottom-button.ant-btn {
-  width: 28px;
-  height: 28px;
-  border: 0 !important;
-  border-radius: 6px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid #c7dcef !important;
+  border-radius: 50%;
   color: #2477f5;
-  background: transparent !important;
-  box-shadow: none !important;
+  background: #fff !important;
+  box-shadow: 0 2px 8px rgba(34, 83, 144, 0.12) !important;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 .console-app .agent-chat-floating .agent-stage .scroll-to-bottom-button.ant-btn:hover,
 .console-app .agent-chat-floating .agent-stage .scroll-to-bottom-button.ant-btn:focus-visible {
+  border-color: #8bb9e8 !important;
   color: #1768dd;
+  background: #f4f9ff !important;
+  box-shadow: 0 3px 10px rgba(34, 83, 144, 0.16) !important;
+}
+.console-app .agent-chat-floating .agent-stage .scroll-to-bottom-wrap {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  right: auto;
+  bottom: calc(100% + 6px);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  transform: translateX(-50%);
   background: transparent !important;
+  box-shadow: none !important;
 }
 .console-app .agent-chat-floating .tool-card .collapsible-header {
   min-width: 0;
@@ -1667,6 +1703,7 @@ body,
 .console-app .agent-chat-floating .agent-stage .chat-sender .ant-btn-primary:hover:not(:disabled) { background: #1768dd !important; }
 .console-app .agent-chat-floating .agent-stage .chat-sender .ant-btn-primary:disabled { background: #c9d9eb !important; }
 .console-app .todo-dock-collapsed[hidden] { display: none !important; }
+.console-app .todo-dock-expanded[hidden] { display: none !important; }
 
 @media (max-width: 480px) {
   .agent-chat-floating { border-radius: 6px; }
