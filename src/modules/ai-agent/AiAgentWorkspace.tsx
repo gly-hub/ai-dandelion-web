@@ -29,6 +29,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useNavMenus } from '../../contexts/NavMenuContext'
 import { AgentMySpacePanel } from './AgentMySpacePanel'
 import { AgentToolboxPanel } from './AgentToolboxPanel'
+import { WorkflowTriggerWorkspace } from './WorkflowTriggerWorkspace'
 import { MessageBubble } from '../../components/MessageBubble'
 import { ChatModelSelector, readAutoModelEnabled } from '../../components/ChatModelSelector'
 import { SidebarSearchInput } from '../../components/SidebarSearchInput'
@@ -134,13 +135,21 @@ export function AiAgentWorkspace({
     if (embedded || compact) {
       return 'chat'
     }
-    if (urlViewKey && findNavMenuByViewKey(navMenus, urlViewKey)) {
+    if (urlViewKey === 'workflow-triggers' || (urlViewKey && findNavMenuByViewKey(navMenus, urlViewKey))) {
       return urlViewKey
     }
     return pickDefaultViewKey(navMenus, 'chat')
   }, [compact, embedded, navMenus, urlViewKey])
   const sideNavMenus = useMemo(
-    () => navMenus.filter((item) => item.viewKey !== 'chat'),
+    () => {
+      const items = navMenus.filter((item) => item.viewKey !== 'chat')
+      if (items.some((item) => (item.viewKey || item.code) === 'workflow-triggers')) {
+        return items
+      }
+      return [...items, {
+        id: 'workflow-triggers', parentId: '', module: 'ai-agent', placement: 'module_nav', name: '工作流触发器', code: 'workflow-triggers', viewKey: 'workflow-triggers', icon: 'ControlOutlined', menuType: 2, sort: 999, status: 1, visible: 1, isDefault: false, remark: '管理工作流触发和执行历史', createdAt: 0,
+      }]
+    },
     [navMenus],
   )
   const [sessions, setSessions] = useState<Session[]>([])
@@ -1339,6 +1348,8 @@ export function AiAgentWorkspace({
         />
       ) : activeView === 'my-space' ? (
         <AgentMySpacePanel />
+      ) : activeView === 'workflow-triggers' ? (
+        <WorkflowTriggerWorkspace />
       ) : activeView === 'chat' ? (
         <main className="agent-stage chat-stage">
           {compact ? (

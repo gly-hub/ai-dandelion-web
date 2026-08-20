@@ -1,0 +1,105 @@
+.workflow-trigger-workspace {
+  overflow: hidden;
+}
+
+.workflow-trigger-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.workflow-trigger-header > .ant-space {
+  flex: 0 0 auto;
+  padding-top: 3px;
+}
+
+.workflow-trigger-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 32px 32px;
+}
+
+.workflow-trigger-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.workflow-trigger-toolbar-label {
+  color: var(--console-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workflow-trigger-workflow-select {
+  width: min(380px, 100%);
+}
+
+.workflow-trigger-loading {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+}
+
+.workflow-trigger-name {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.workflow-trigger-name strong {
+  overflow: hidden;
+  color: var(--console-text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-trigger-name span {
+  color: var(--console-muted);
+  font-size: 12px;
+}
+
+.workflow-trigger-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+}
+
+.workflow-trigger-full-width {
+  width: 100%;
+}
+
+.workflow-trigger-workspace .ant-table-wrapper {
+  border: 1px solid var(--console-line-soft);
+  border-radius: 6px;
+  background: var(--console-surface);
+}
+
+.workflow-trigger-workspace .ant-table-thead > tr > th {
+  color: var(--console-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .workflow-trigger-header {
+    flex-direction: column;
+  }
+
+  .workflow-trigger-header > .ant-space {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .workflow-trigger-body {
+    padding: 16px;
+  }
+
+  .workflow-trigger-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

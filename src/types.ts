@@ -604,3 +604,38 @@ export interface AgentBot {
   channels: AgentBotChannel[]
   capabilities: AgentBotCapability[]
 }
+
+export interface WorkflowDefinition {
+  id: string
+  name: string
+  description: string
+  status: string
+  version: number
+  definitionJson: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface WorkflowTrigger {
+  id: string
+  workflowId: string
+  name: string
+  type: 'event' | 'schedule' | string
+  enabled: boolean
+  configJson: string
+  lastRunAt: number
+  nextRunAt: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface WorkflowTriggerExecution {
+  id: string
+  triggerId: string
+  idempotencyKey: string
+  runId: string
+  status: string
+  error: string
+  createdAt: number
+  updatedAt: number
+}
