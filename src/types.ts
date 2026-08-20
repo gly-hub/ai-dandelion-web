@@ -639,3 +639,16 @@ export interface WorkflowTriggerExecution {
   createdAt: number
   updatedAt: number
 }
+
+export interface WorkflowRun {
+  id: string
+  workflowId: string
+  workflowVersion: number
+  status: string
+  inputJson: string
+  outputJson: string
+  error: string
+  waitingActionId: string
+  createdAt: number
+  updatedAt: number
+}

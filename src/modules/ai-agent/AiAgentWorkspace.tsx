@@ -30,6 +30,7 @@ import { useNavMenus } from '../../contexts/NavMenuContext'
 import { AgentMySpacePanel } from './AgentMySpacePanel'
 import { AgentToolboxPanel } from './AgentToolboxPanel'
 import { WorkflowTriggerWorkspace } from './WorkflowTriggerWorkspace'
+import { WorkflowEditorWorkspace } from './WorkflowEditorWorkspace'
 import { MessageBubble } from '../../components/MessageBubble'
 import { ChatModelSelector, readAutoModelEnabled } from '../../components/ChatModelSelector'
 import { SidebarSearchInput } from '../../components/SidebarSearchInput'
@@ -135,7 +136,7 @@ export function AiAgentWorkspace({
     if (embedded || compact) {
       return 'chat'
     }
-    if (urlViewKey === 'workflow-triggers' || (urlViewKey && findNavMenuByViewKey(navMenus, urlViewKey))) {
+    if (urlViewKey === 'workflows' || urlViewKey === 'workflow-triggers' || (urlViewKey && findNavMenuByViewKey(navMenus, urlViewKey))) {
       return urlViewKey
     }
     return pickDefaultViewKey(navMenus, 'chat')
@@ -143,12 +144,10 @@ export function AiAgentWorkspace({
   const sideNavMenus = useMemo(
     () => {
       const items = navMenus.filter((item) => item.viewKey !== 'chat')
-      if (items.some((item) => (item.viewKey || item.code) === 'workflow-triggers')) {
-        return items
-      }
-      return [...items, {
-        id: 'workflow-triggers', parentId: '', module: 'ai-agent', placement: 'module_nav', name: '工作流触发器', code: 'workflow-triggers', viewKey: 'workflow-triggers', icon: 'ControlOutlined', menuType: 2, sort: 999, status: 1, visible: 1, isDefault: false, remark: '管理工作流触发和执行历史', createdAt: 0,
-      }]
+      const fallbackMenus = []
+      if (!items.some((item) => (item.viewKey || item.code) === 'workflows')) fallbackMenus.push({ id: 'workflows', parentId: '', module: 'ai-agent', placement: 'module_nav', name: '工作流编排', code: 'workflows', viewKey: 'workflows', icon: 'BranchesOutlined', menuType: 2, sort: 998, status: 1, visible: 1, isDefault: false, remark: '创建和编辑 Agent 工作流', createdAt: 0 })
+      if (!items.some((item) => (item.viewKey || item.code) === 'workflow-triggers')) fallbackMenus.push({ id: 'workflow-triggers', parentId: '', module: 'ai-agent', placement: 'module_nav', name: '工作流触发器', code: 'workflow-triggers', viewKey: 'workflow-triggers', icon: 'ControlOutlined', menuType: 2, sort: 999, status: 1, visible: 1, isDefault: false, remark: '管理工作流触发和执行历史', createdAt: 0 })
+      return [...items, ...fallbackMenus]
     },
     [navMenus],
   )
@@ -1348,6 +1347,8 @@ export function AiAgentWorkspace({
         />
       ) : activeView === 'my-space' ? (
         <AgentMySpacePanel />
+      ) : activeView === 'workflows' ? (
+        <WorkflowEditorWorkspace />
       ) : activeView === 'workflow-triggers' ? (
         <WorkflowTriggerWorkspace />
       ) : activeView === 'chat' ? (

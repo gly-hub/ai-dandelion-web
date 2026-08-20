@@ -1,5 +1,5 @@
 import { requestJSON } from './api'
-import type { WorkflowDefinition, WorkflowTrigger, WorkflowTriggerExecution } from '../types'
+import type { WorkflowDefinition, WorkflowRun, WorkflowTrigger, WorkflowTriggerExecution } from '../types'
 
 export interface WorkflowTriggerPayload {
   name: string
@@ -10,6 +10,43 @@ export interface WorkflowTriggerPayload {
 export async function listWorkflows(): Promise<WorkflowDefinition[]> {
   const data = await requestJSON<{ workflows?: unknown[] }>('/ai-agent/workflows/')
   return Array.isArray(data.workflows) ? data.workflows.map(normalizeWorkflow).filter(Boolean) as WorkflowDefinition[] : []
+}
+
+export async function getWorkflow(workflowId: string): Promise<WorkflowDefinition> {
+  const data = await requestJSON<{ workflow?: unknown }>(`/ai-agent/workflows/${encodeURIComponent(workflowId)}`)
+  return normalizeWorkflow(data.workflow)
+}
+
+export async function createWorkflow(name: string, description: string, definitionJson: string): Promise<WorkflowDefinition> {
+  const data = await requestJSON<{ workflow?: unknown }>('/ai-agent/workflows/', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description, definitionJson }),
+  })
+  return normalizeWorkflow(data.workflow)
+}
+
+export async function updateWorkflow(workflowId: string, name: string, description: string, definitionJson: string): Promise<WorkflowDefinition> {
+  const data = await requestJSON<{ workflow?: unknown }>(`/ai-agent/workflows/${encodeURIComponent(workflowId)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description, definitionJson }),
+  })
+  return normalizeWorkflow(data.workflow)
+}
+
+export async function publishWorkflow(workflowId: string): Promise<WorkflowDefinition> {
+  const data = await requestJSON<{ workflow?: unknown }>(`/ai-agent/workflows/${encodeURIComponent(workflowId)}/publish`, { method: 'POST' })
+  return normalizeWorkflow(data.workflow)
+}
+
+export async function deleteWorkflow(workflowId: string): Promise<void> {
+  await requestJSON(`/ai-agent/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' })
+}
+
+export async function startWorkflow(workflowId: string, inputJson = '{}', message = ''): Promise<WorkflowRun> {
+  const data = await requestJSON<{ run?: unknown }>(`/ai-agent/workflows/${encodeURIComponent(workflowId)}/runs`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inputJson, message }),
+  })
+  return normalizeRun(data.run)
 }
 
 export async function listWorkflowTriggers(workflowId: string): Promise<WorkflowTrigger[]> {
@@ -64,11 +101,22 @@ function stringValue(value: unknown): string { return typeof value === 'string' 
 function numberValue(value: unknown): number { return typeof value === 'number' ? value : Number(value || 0) || 0 }
 function booleanValue(value: unknown): boolean { return value === true || value === 1 || value === 'true' }
 
-function normalizeWorkflow(raw: unknown): WorkflowDefinition {
+export function normalizeWorkflow(raw: unknown): WorkflowDefinition {
   const data = record(raw)
   return {
     id: stringValue(data.id), name: stringValue(data.name), description: stringValue(data.description),
     status: stringValue(data.status), version: numberValue(data.version), definitionJson: stringValue(data.definitionJson ?? data.definition_json),
+    createdAt: numberValue(data.createdAt ?? data.created_at), updatedAt: numberValue(data.updatedAt ?? data.updated_at),
+  }
+}
+
+function normalizeRun(raw: unknown): WorkflowRun {
+  const data = record(raw)
+  return {
+    id: stringValue(data.id), workflowId: stringValue(data.workflowId ?? data.workflow_id),
+    workflowVersion: numberValue(data.workflowVersion ?? data.workflow_version), status: stringValue(data.status),
+    inputJson: stringValue(data.inputJson ?? data.input_json), outputJson: stringValue(data.outputJson ?? data.output_json),
+    error: stringValue(data.error), waitingActionId: stringValue(data.waitingActionId ?? data.waiting_action_id),
     createdAt: numberValue(data.createdAt ?? data.created_at), updatedAt: numberValue(data.updatedAt ?? data.updated_at),
   }
 }
