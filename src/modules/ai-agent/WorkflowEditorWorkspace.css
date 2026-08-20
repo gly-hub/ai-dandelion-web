@@ -49,5 +49,14 @@
 .workflow-inspector label { display: block; margin: 14px 0 6px; color: var(--console-muted); font-size: 12px; font-weight: 600; }
 .workflow-inspector-full { width: 100%; }
 .workflow-inspector-note { color: var(--console-muted); font-size: 12px; line-height: 1.6; }
+.workflow-run-detail { color: var(--console-text); }
+.workflow-run-detail-status { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.workflow-run-detail-status code { overflow: hidden; color: var(--console-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-run-detail dl { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px 12px; margin: 0; }
+.workflow-run-detail dt { color: var(--console-muted); font-size: 12px; }
+.workflow-run-detail dd { min-width: 0; margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.workflow-run-detail pre { max-height: 180px; overflow: auto; margin: 0; padding: 9px; border: 1px solid var(--console-line-soft); border-radius: 5px; background: var(--console-surface-tint); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.workflow-run-decision { display: flex; flex-direction: column; gap: 8px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--console-line-soft); }
+.workflow-run-decision label { color: var(--console-muted); font-size: 12px; font-weight: 600; }
 @media (max-width: 900px) { .workflow-composer-body { grid-template-columns: minmax(0, 1fr); } .workflow-inspector { position: absolute; z-index: 5; top: 64px; right: 0; bottom: 0; width: min(320px, 90vw); box-shadow: -5px 0 20px rgba(30, 55, 90, .12); } .workflow-composer-topbar { align-items: flex-start; } .workflow-composer-topbar > .ant-space:last-child { flex-wrap: wrap; justify-content: flex-end; } }
 @media (max-width: 640px) { .workflow-list-body { padding: 16px; } .workflow-list-header { flex-direction: column; } .workflow-list-header > .ant-space { width: 100%; justify-content: flex-end; } .workflow-composer-meta { width: 36vw; } .workflow-canvas-hint { display: none; } }

@@ -49,6 +49,18 @@ export async function startWorkflow(workflowId: string, inputJson = '{}', messag
   return normalizeRun(data.run)
 }
 
+export async function getWorkflowRun(runId: string): Promise<WorkflowRun> {
+  const data = await requestJSON<{ run?: unknown }>(`/ai-agent/workflow-runs/${encodeURIComponent(runId)}`)
+  return normalizeRun(data.run)
+}
+
+export async function resumeWorkflow(actionId: string, decisionJson = '{}'): Promise<WorkflowRun> {
+  const data = await requestJSON<{ run?: unknown }>(`/ai-agent/workflow-actions/${encodeURIComponent(actionId)}/resume`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decisionJson }),
+  })
+  return normalizeRun(data.run)
+}
+
 export async function listWorkflowTriggers(workflowId: string): Promise<WorkflowTrigger[]> {
   const data = await requestJSON<{ triggers?: unknown[] }>(`/ai-agent/workflows/${encodeURIComponent(workflowId)}/triggers`)
   return Array.isArray(data.triggers) ? data.triggers.map(normalizeTrigger).filter(Boolean) as WorkflowTrigger[] : []
@@ -110,7 +122,7 @@ export function normalizeWorkflow(raw: unknown): WorkflowDefinition {
   }
 }
 
-function normalizeRun(raw: unknown): WorkflowRun {
+export function normalizeRun(raw: unknown): WorkflowRun {
   const data = record(raw)
   return {
     id: stringValue(data.id), workflowId: stringValue(data.workflowId ?? data.workflow_id),

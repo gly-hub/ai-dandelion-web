@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { App, Button, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Tag, Tooltip } from 'antd'
+import { App, Button, Drawer, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Tag, Tooltip } from 'antd'
 import {
   ApiOutlined,
   ArrowLeftOutlined,
@@ -19,12 +19,14 @@ import {
   createWorkflow,
   deleteWorkflow,
   getWorkflow,
+  getWorkflowRun,
   listWorkflows,
   publishWorkflow,
+  resumeWorkflow,
   startWorkflow,
   updateWorkflow,
 } from '../../lib/workflowApi'
-import type { WorkflowDefinition } from '../../types'
+import type { WorkflowDefinition, WorkflowRun } from '../../types'
 import './WorkflowEditorWorkspace.css'
 
 type CanvasNodeType = 'agent' | 'transform' | 'http' | 'condition' | 'human' | 'start' | 'end'
@@ -58,6 +60,10 @@ export function WorkflowEditorWorkspace() {
   const [createOpen, setCreateOpen] = useState(false)
   const [runOpen, setRunOpen] = useState(false)
   const [runLoading, setRunLoading] = useState(false)
+  const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null)
+  const [runDrawerOpen, setRunDrawerOpen] = useState(false)
+  const [decisionJson, setDecisionJson] = useState('{}')
+  const [resuming, setResuming] = useState(false)
   const [createForm] = Form.useForm<CreateValues>()
   const [runForm] = Form.useForm<RunValues>()
   const canvasRef = useRef<HTMLDivElement | null>(null)
@@ -125,9 +131,27 @@ export function WorkflowEditorWorkspace() {
       JSON.parse(values.inputJson || '{}')
       setRunLoading(true)
       const run = await startWorkflow(draft.id, values.inputJson || '{}', values.message || '')
+      setActiveRun(run)
+      setDecisionJson('{}')
+      setRunDrawerOpen(true)
       message.success(`运行已启动：${run.id || '已提交'}`)
       setRunOpen(false)
     } catch (error) { message.error(error instanceof Error ? error.message : '启动运行失败') } finally { setRunLoading(false) }
+  }
+
+  async function refreshRun() {
+    if (!activeRun?.id) return
+    try { setActiveRun(await getWorkflowRun(activeRun.id)); message.success('运行状态已刷新') } catch (error) { message.error(error instanceof Error ? error.message : '刷新运行状态失败') }
+  }
+
+  async function resumeRun() {
+    if (!activeRun?.waitingActionId) return
+    try {
+      JSON.parse(decisionJson || '{}')
+      setResuming(true)
+      setActiveRun(await resumeWorkflow(activeRun.waitingActionId, decisionJson || '{}'))
+      message.success('人工决策已提交')
+    } catch (error) { message.error(error instanceof Error ? error.message : '提交人工决策失败') } finally { setResuming(false) }
   }
 
   function updateMeta(patch: Partial<Pick<WorkflowDefinition, 'name' | 'description'>>) { setDraft((current) => current ? { ...current, ...patch } : current) }
@@ -165,7 +189,7 @@ export function WorkflowEditorWorkspace() {
   }
 
   if (draft && canvas) {
-    return <><WorkflowEditorCanvas draft={draft} canvas={canvas} selectedNode={selectedNode} selectedNodeId={selectedNodeId} connectingFrom={connectingFrom} saving={saving} canvasRef={canvasRef} onBack={closeEditor} onMetaChange={updateMeta} onSave={() => void saveDraft()} onPublish={() => void saveDraft(true)} onRun={() => { runForm.setFieldsValue({ inputJson: '{}', message: '' }); setRunOpen(true) }} onAddNode={addNode} onSelectNode={handleNodeClick} onDeleteNode={deleteNode} onUpdateNode={updateNode} onUpdateConfig={updateNodeConfig} onStartDrag={startDrag} onMoveDrag={moveDrag} onFinishDrag={finishDrag} onPortClick={handlePortClick} /><Modal open={runOpen} title="运行工作流" okText="启动" cancelText="取消" confirmLoading={runLoading} onCancel={() => setRunOpen(false)} onOk={() => void handleRun()}><Form form={runForm} layout="vertical"><Form.Item name="inputJson" label="输入 JSON" rules={[{ required: true, message: '请输入 JSON 对象' }, { validator: (_, value) => { try { const parsed = JSON.parse(value || '{}'); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Promise.resolve() : Promise.reject(new Error('请输入 JSON 对象')) } catch { return Promise.reject(new Error('JSON 格式不正确')) } } }]}><Input.TextArea rows={6} /></Form.Item><Form.Item name="message" label="启动消息"><Input.TextArea rows={2} /></Form.Item></Form></Modal></>
+    return <><WorkflowEditorCanvas draft={draft} canvas={canvas} selectedNode={selectedNode} selectedNodeId={selectedNodeId} connectingFrom={connectingFrom} saving={saving} canvasRef={canvasRef} onBack={closeEditor} onMetaChange={updateMeta} onSave={() => void saveDraft()} onPublish={() => void saveDraft(true)} onRun={() => { runForm.setFieldsValue({ inputJson: '{}', message: '' }); setRunOpen(true) }} onAddNode={addNode} onSelectNode={handleNodeClick} onDeleteNode={deleteNode} onUpdateNode={updateNode} onUpdateConfig={updateNodeConfig} onStartDrag={startDrag} onMoveDrag={moveDrag} onFinishDrag={finishDrag} onPortClick={handlePortClick} /><Modal open={runOpen} title="运行工作流" okText="启动" cancelText="取消" confirmLoading={runLoading} onCancel={() => setRunOpen(false)} onOk={() => void handleRun()}><Form form={runForm} layout="vertical"><Form.Item name="inputJson" label="输入 JSON" rules={[{ required: true, message: '请输入 JSON 对象' }, { validator: (_, value) => { try { const parsed = JSON.parse(value || '{}'); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Promise.resolve() : Promise.reject(new Error('请输入 JSON 对象')) } catch { return Promise.reject(new Error('JSON 格式不正确')) } } }]}><Input.TextArea rows={6} /></Form.Item><Form.Item name="message" label="启动消息"><Input.TextArea rows={2} /></Form.Item></Form></Modal><Drawer title="运行详情" open={runDrawerOpen} width={560} onClose={() => setRunDrawerOpen(false)} extra={<Button icon={<ThunderboltOutlined />} onClick={() => void refreshRun()}>刷新</Button>}>{activeRun ? <div className="workflow-run-detail"><div className="workflow-run-detail-status"><Tag color={runStatusColor(activeRun.status)}>{runStatusLabel(activeRun.status)}</Tag><code>{activeRun.id}</code></div><dl><dt>版本</dt><dd>{activeRun.workflowVersion || '-'}</dd><dt>输入</dt><dd><pre>{activeRun.inputJson || '{}'}</pre></dd><dt>输出</dt><dd><pre>{activeRun.outputJson || '-'}</pre></dd><dt>错误</dt><dd>{activeRun.error || '-'}</dd><dt>等待动作</dt><dd>{activeRun.waitingActionId || '-'}</dd></dl>{activeRun.waitingActionId ? <div className="workflow-run-decision"><label>人工决策 JSON</label><Input.TextArea rows={5} value={decisionJson} onChange={(event) => setDecisionJson(event.target.value)} /><Button type="primary" loading={resuming} onClick={() => void resumeRun()}>提交决策</Button></div> : null}</div> : <Empty description="暂无运行" />}</Drawer></>
   }
 
   return <section className="workflow-editor-workspace agent-panel-stage">
@@ -207,3 +231,5 @@ function defaultNodeConfig(type: CanvasNodeType): Record<string, unknown> {
 function defaultCanvas(id: string): CanvasDraft { return { id, version: 1, nodes: [{ id: 'start', type: 'start', title: '开始', position: { x: 80, y: 270 }, config: {} }, { id: 'agent-1', type: 'agent', title: 'Agent', position: { x: 420, y: 270 }, config: defaultNodeConfig('agent') }, { id: 'end', type: 'end', title: '结束', position: { x: 800, y: 270 }, config: {} }], edges: [{ id: 'edge-start-agent', source: 'start', target: 'agent-1' }, { id: 'edge-agent-end', source: 'agent-1', target: 'end' }] } }
 function parseCanvas(raw: string, id: string, version: number): CanvasDraft { try { const value = JSON.parse(raw || '{}') as Partial<CanvasDraft>; if (Array.isArray(value.nodes) && Array.isArray(value.edges)) return { id: value.id || id, version: value.version || version || 1, nodes: value.nodes.map((node, index) => ({ ...node, position: node.position || { x: 100 + (index % 4) * 280, y: 120 + Math.floor(index / 4) * 190 }, config: node.config || {} })) as EditorNode[], edges: value.edges as EditorEdge[] } } catch { /* use default below */ } return defaultCanvas(id) }
 function summaryForNode(node: EditorNode): Array<[string, string]> { if (node.type === 'agent') return [['Agent', String(node.config.agent || 'claude_llm')], ['提示词', String(node.config.user_prompt || '{{input.message}}')]]; if (node.type === 'http') return [['Method', String(node.config.method || 'GET')], ['URL', String(node.config.url || '未配置')]]; if (node.type === 'condition') return [['分支', `${Array.isArray(node.config.cases) ? node.config.cases.length : 0} 条`]]; if (node.type === 'human') return [['动作', '等待人工']]; const rows: Array<[string, string]> = [['类型', node.type === 'transform' ? '数据转换' : node.type === 'start' ? '工作流入口' : node.type === 'end' ? '工作流出口' : '']]; return rows.filter((row) => row[1]) }
+function runStatusLabel(value: string): string { return value === 'completed' ? '已完成' : value === 'failed' ? '失败' : value === 'waiting_for_user' ? '等待人工' : value === 'running' ? '运行中' : value || '未知' }
+function runStatusColor(value: string): string { return value === 'completed' ? 'green' : value === 'failed' ? 'red' : value === 'waiting_for_user' ? 'orange' : 'blue' }
