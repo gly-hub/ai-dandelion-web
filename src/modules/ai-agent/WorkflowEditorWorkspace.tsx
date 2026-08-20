@@ -81,6 +81,14 @@ export function WorkflowEditorWorkspace() {
     void loadWorkflows()
   }, [loadWorkflows])
 
+  useEffect(() => {
+    if (!activeRun?.id || !['running', 'waiting_for_user'].includes(activeRun.status)) return undefined
+    const timer = window.setInterval(() => {
+      void getWorkflowRun(activeRun.id).then(setActiveRun).catch(() => undefined)
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [activeRun?.id, activeRun?.status])
+
   async function openEditor(item: WorkflowDefinition) {
     try {
       const loaded = item.definitionJson ? item : await getWorkflow(item.id)
@@ -88,10 +96,11 @@ export function WorkflowEditorWorkspace() {
       setCanvas(parseCanvas(loaded.definitionJson, loaded.id, loaded.version))
       setSelectedNodeId('')
       setConnectingFrom('')
+      setActiveRun(null)
     } catch (error) { message.error(error instanceof Error ? error.message : '打开工作流失败') }
   }
 
-  function closeEditor() { setDraft(null); setCanvas(null); setSelectedNodeId(''); setConnectingFrom('') }
+  function closeEditor() { setDraft(null); setCanvas(null); setSelectedNodeId(''); setConnectingFrom(''); setActiveRun(null); setRunDrawerOpen(false) }
 
   async function handleCreate() {
     try {
