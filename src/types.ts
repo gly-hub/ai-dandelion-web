@@ -652,3 +652,16 @@ export interface WorkflowRun {
   createdAt: number
   updatedAt: number
 }
+
+export type WorkflowRunNodeStatus = 'pending' | 'running' | 'success' | 'failed' | 'waiting' | 'skipped'
+export type WorkflowRunEdgeStatus = 'inactive' | 'active' | 'skipped'
+
+export interface WorkflowRunEvent {
+  id: string
+  runId: string
+  sequence: number
+  type: string
+  nodeId: string
+  dataJson: string
+  createdAt: number
+}

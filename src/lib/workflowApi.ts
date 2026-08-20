@@ -1,5 +1,5 @@
 import { requestJSON } from './api'
-import type { WorkflowDefinition, WorkflowRun, WorkflowTrigger, WorkflowTriggerExecution } from '../types'
+import type { WorkflowDefinition, WorkflowRun, WorkflowRunEvent, WorkflowTrigger, WorkflowTriggerExecution } from '../types'
 
 export interface WorkflowTriggerPayload {
   name: string
@@ -52,6 +52,12 @@ export async function startWorkflow(workflowId: string, inputJson = '{}', messag
 export async function getWorkflowRun(runId: string): Promise<WorkflowRun> {
   const data = await requestJSON<{ run?: unknown }>(`/ai-agent/workflow-runs/${encodeURIComponent(runId)}`)
   return normalizeRun(data.run)
+}
+
+export async function listWorkflowRunEvents(runId: string, afterSequence = 0, limit = 200): Promise<WorkflowRunEvent[]> {
+  const query = new URLSearchParams({ after_sequence: String(afterSequence), limit: String(limit) })
+  const data = await requestJSON<{ events?: unknown[] }>(`/ai-agent/workflow-runs/${encodeURIComponent(runId)}/events?${query.toString()}`)
+  return Array.isArray(data.events) ? data.events.map(normalizeRunEvent).filter(Boolean) as WorkflowRunEvent[] : []
 }
 
 export async function resumeWorkflow(actionId: string, decisionJson = '{}'): Promise<WorkflowRun> {
@@ -130,6 +136,15 @@ export function normalizeRun(raw: unknown): WorkflowRun {
     inputJson: stringValue(data.inputJson ?? data.input_json), outputJson: stringValue(data.outputJson ?? data.output_json),
     error: stringValue(data.error), waitingActionId: stringValue(data.waitingActionId ?? data.waiting_action_id),
     createdAt: numberValue(data.createdAt ?? data.created_at), updatedAt: numberValue(data.updatedAt ?? data.updated_at),
+  }
+}
+
+function normalizeRunEvent(raw: unknown): WorkflowRunEvent {
+  const data = record(raw)
+  return {
+    id: stringValue(data.id), runId: stringValue(data.runId ?? data.run_id), sequence: numberValue(data.sequence),
+    type: stringValue(data.type), nodeId: stringValue(data.nodeId ?? data.node_id), dataJson: stringValue(data.dataJson ?? data.data_json),
+    createdAt: numberValue(data.createdAt ?? data.created_at),
   }
 }
 
