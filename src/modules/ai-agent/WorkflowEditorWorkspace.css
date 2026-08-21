@@ -34,6 +34,8 @@
 .workflow-edge-path.is-run-active { stroke: #16836a; stroke-width: 3; }
 .workflow-edge-path.is-run-skipped { stroke: #aab4c2; stroke-dasharray: 5 4; }
 .workflow-edge-path.is-preview { stroke: #35c7d6; stroke-width: 2; pointer-events: none; }
+.workflow-edge-endpoint-handle { fill: #fff; stroke: #2f54eb; stroke-width: 2.5; cursor: grab; pointer-events: auto; }
+.workflow-edge-endpoint-handle:hover { fill: #eef4ff; stroke-width: 3; }
 .workflow-editor-node { position: absolute; z-index: 4; display: flex; width: 326px; min-height: 146px; flex-direction: column; gap: 7px; padding: 12px 12px 10px; border: 1px solid #dfe4ef; border-top: 4px solid; border-radius: 8px; background: linear-gradient(180deg, #fff 0%, #f8faff 100%); box-shadow: 0 10px 28px rgba(15, 23, 42, .06); cursor: grab; user-select: none; }
 .workflow-editor-node:active { cursor: grabbing; }
 .workflow-editor-node.is-selected { border-color: var(--console-brand-ink); box-shadow: 0 0 0 2px rgba(37, 99, 235, .14), 0 6px 18px rgba(30, 55, 90, .11); }
