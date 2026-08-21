@@ -369,6 +369,53 @@ type EnhancedWorkflowCanvasProps = Parameters<typeof WorkflowEditorCanvas>[0]
 function EnhancedWorkflowCanvas(props: EnhancedWorkflowCanvasProps) {
   const { draft, canvas, selectedNode, selectedEdge, selectedNodeId, selectedEdgeId, connectingFrom, nodeStatuses, edgeStatuses } = props
   const zoom = props.canvasZoom || 0.9
+  const canvasPanRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number; didMove: boolean } | null>(null)
+  const canvasPanDidMoveRef = useRef(false)
+  useEffect(() => {
+    const canvasElement = props.canvasRef.current
+    if (!canvasElement) return undefined
+    const isBlankCanvasTarget = (target: EventTarget | null) => target instanceof Element && (target.classList.contains('workflow-canvas-shell') || target.classList.contains('workflow-canvas-scale-space') || target.classList.contains('workflow-canvas-scale-layer') || target.classList.contains('workflow-edge-layer'))
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 || !isBlankCanvasTarget(event.target)) return
+      event.preventDefault()
+      canvasElement.setPointerCapture(event.pointerId)
+      canvasPanDidMoveRef.current = false
+      canvasPanRef.current = { startX: event.clientX, startY: event.clientY, scrollLeft: canvasElement.scrollLeft, scrollTop: canvasElement.scrollTop, didMove: false }
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      const pan = canvasPanRef.current
+      if (!pan) return
+      const deltaX = event.clientX - pan.startX
+      const deltaY = event.clientY - pan.startY
+      if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) pan.didMove = true
+      canvasElement.scrollLeft = pan.scrollLeft - deltaX
+      canvasElement.scrollTop = pan.scrollTop - deltaY
+    }
+    const finishPan = () => {
+      if (!canvasPanRef.current) return
+      canvasPanDidMoveRef.current = canvasPanRef.current.didMove
+      canvasPanRef.current = null
+      props.onFinishDrag()
+    }
+    const handleClick = (event: MouseEvent) => {
+      if (!canvasPanDidMoveRef.current) return
+      canvasPanDidMoveRef.current = false
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    canvasElement.addEventListener('pointerdown', handlePointerDown)
+    canvasElement.addEventListener('pointermove', handlePointerMove)
+    canvasElement.addEventListener('pointerup', finishPan)
+    canvasElement.addEventListener('pointercancel', finishPan)
+    canvasElement.addEventListener('click', handleClick)
+    return () => {
+      canvasElement.removeEventListener('pointerdown', handlePointerDown)
+      canvasElement.removeEventListener('pointermove', handlePointerMove)
+      canvasElement.removeEventListener('pointerup', finishPan)
+      canvasElement.removeEventListener('pointercancel', finishPan)
+      canvasElement.removeEventListener('click', handleClick)
+    }
+  }, [props.canvasRef, props.onFinishDrag])
   const nodes = new Map(canvas.nodes.map((node) => [node.id, node]))
   const edgePath = (edge: EditorEdge) => {
     const source = nodes.get(edge.source)
