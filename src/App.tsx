@@ -82,6 +82,17 @@ function ConsoleAppContent() {
     disposeAllAiAgentSessionProviders()
     setChatMode(null)
   }, [])
+  const refreshNotifications = useCallback(async () => {
+    if (!currentUser?.id) return
+    try {
+      const result = await listSystemNotifications({ page: 1, pageSize: 30 })
+      result.notifications.forEach((item) => handledNotificationIdsRef.current.add(item.id))
+      setNotifications(result.notifications)
+      setUnreadNotificationCount(result.unreadCount)
+    } catch {
+      // Realtime delivery remains usable if the consistency refresh is temporarily unavailable.
+    }
+  }, [currentUser?.id])
   const immersiveViewportStyle = useMemo<ImmersiveViewportStyle | undefined>(() => {
     if (!immersiveFuncEditor) {
       return undefined
@@ -130,13 +141,8 @@ function ConsoleAppContent() {
 
   useEffect(() => {
     if (!currentUser?.id) return undefined
-    void Promise.all([ensureRealtimeConnection(), listSystemNotifications({ page: 1, pageSize: 30 })])
-      .then(([, result]) => {
-        result.notifications.forEach((item) => handledNotificationIdsRef.current.add(item.id))
-        setNotifications(result.notifications)
-        setUnreadNotificationCount(result.unreadCount)
-      })
-      .catch(() => undefined)
+    void ensureRealtimeConnection().catch(() => undefined)
+    void refreshNotifications()
     return subscribeRealtimeEvents((event) => {
       if (event.type !== 'system.notification') return
       const notification = normalizeSystemNotification(event.payload)
@@ -154,7 +160,7 @@ function ConsoleAppContent() {
         method({ content: `${notification.title}：${notification.content}`, duration: 5 })
       }
     })
-  }, [currentUser?.id, modal, toastMessage])
+  }, [currentUser?.id, modal, refreshNotifications, toastMessage])
 
   useEffect(() => {
     if (!currentUser?.id) {
@@ -162,6 +168,11 @@ function ConsoleAppContent() {
     }
     return subscribeRealtimeConnectionStatus(setRealtimeStatus)
   }, [currentUser?.id])
+
+  useEffect(() => {
+    if (!currentUser?.id || realtimeStatus !== 'connected') return
+    void refreshNotifications()
+  }, [currentUser?.id, realtimeStatus, refreshNotifications])
 
   function handleLogout() {
     stopRealtimeConnection()
