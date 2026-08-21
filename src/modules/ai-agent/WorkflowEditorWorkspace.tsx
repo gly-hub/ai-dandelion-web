@@ -15,7 +15,6 @@ import {
   RobotOutlined,
   SaveOutlined,
   SearchOutlined,
-  ZoomInOutlined,
   ThunderboltOutlined,
   UserSwitchOutlined,
 } from '@ant-design/icons'
@@ -38,7 +37,7 @@ type CanvasNodeType = 'agent' | 'transform' | 'http' | 'condition' | 'human' | '
 type EditorNode = { id: string; type: CanvasNodeType; title: string; position: { x: number; y: number }; config: Record<string, unknown> }
 type EditorEdge = { id: string; source: string; target: string; when?: string; condition?: string }
 type CanvasDraft = { id: string; version: number; nodes: EditorNode[]; edges: EditorEdge[] }
-type ConnectingState = { sourceId: string; branchValue?: string }
+type ConnectingState = { sourceId: string; branchValue?: string; start: { x: number; y: number }; current: { x: number; y: number } }
 type CreateValues = { name: string; description?: string }
 type RunValues = { inputJson?: string; message?: string }
 type NodeMeta = { type: CanvasNodeType; label: string; category: string; description: string; icon: React.ReactNode; color: string }
@@ -50,8 +49,10 @@ const NODE_META: NodeMeta[] = [
   { type: 'condition', label: 'Condition', category: '逻辑节点', description: '根据条件选择执行分支', icon: <BranchesOutlined />, color: '#0b9a8d' },
   { type: 'human', label: 'Human', category: '人工节点', description: '暂停流程并等待人工决策', icon: <UserSwitchOutlined />, color: '#b06b1d' },
 ]
-const NODE_WIDTH = 224
-const NODE_HEIGHT = 128
+const NODE_WIDTH = 326
+const NODE_HEIGHT = 146
+const CANVAS_WIDTH = 3600
+const CANVAS_HEIGHT = 1800
 
 export function WorkflowEditorWorkspace() {
   const { message } = App.useApp()
@@ -208,13 +209,22 @@ export function WorkflowEditorWorkspace() {
     setCanvas({ ...canvas, nodes: [...canvas.nodes, node] }); setSelectedNodeId(node.id); setSelectedEdgeId(''); setNodeLibraryOpen(false)
   }
 
+  function canvasPoint(event: { clientX: number; clientY: number }) {
+    if (!canvasRef.current) return { x: 0, y: 0 }
+    const rect = canvasRef.current.getBoundingClientRect()
+    return { x: (event.clientX - rect.left + canvasRef.current.scrollLeft) / canvasZoom, y: (event.clientY - rect.top + canvasRef.current.scrollTop) / canvasZoom }
+  }
   function startDrag(event: React.PointerEvent<HTMLDivElement>, node: EditorNode) {
     if (!canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
     event.currentTarget.setPointerCapture(event.pointerId)
-    setDragging({ id: node.id, dx: event.clientX - rect.left - node.position.x, dy: event.clientY - rect.top - node.position.y })
+    setDragging({ id: node.id, dx: (event.clientX - rect.left + canvasRef.current.scrollLeft) / canvasZoom - node.position.x, dy: (event.clientY - rect.top + canvasRef.current.scrollTop) / canvasZoom - node.position.y })
   }
   function moveDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (connectingFrom) {
+      setConnectingFrom((current) => current ? { ...current, current: canvasPoint(event) } : current)
+      return
+    }
     if (!dragging || !canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = Math.max(20, (event.clientX - rect.left + canvasRef.current.scrollLeft) / canvasZoom - dragging.dx)
@@ -223,10 +233,15 @@ export function WorkflowEditorWorkspace() {
   }
   function finishDrag() { setDragging(null) }
   function handleNodeClick(node: EditorNode) { setSelectedNodeId(node.id); setSelectedEdgeId(''); setConnectingFrom(null) }
-  function handlePortClick(node: EditorNode, branchValue?: string) {
-    if (!connectingFrom) { setConnectingFrom({ sourceId: node.id, branchValue }); setSelectedNodeId(node.id); setSelectedEdgeId(''); return }
-    if (connectingFrom.sourceId !== node.id && canvas && !canvas.edges.some((edge) => edge.source === connectingFrom.sourceId && edge.target === node.id && edge.when === (connectingFrom.branchValue ? edgeWhenFromBranch(connectingFrom.sourceId, connectingFrom.branchValue) : undefined))) {
-      setCanvas({ ...canvas, edges: [...canvas.edges, { id: `edge-${crypto.randomUUID().slice(0, 8)}`, source: connectingFrom.sourceId, target: node.id, when: connectingFrom.branchValue ? edgeWhenFromBranch(connectingFrom.sourceId, connectingFrom.branchValue) : undefined }] })
+  function handlePortClick(node: EditorNode, branchValue?: string, role: 'source' | 'target' = 'source') {
+    if (role === 'source') {
+      const start = { x: node.position.x + NODE_WIDTH, y: node.type === 'condition' ? conditionBranchPortY(node, branchValue) : node.position.y + NODE_HEIGHT / 2 }
+      setConnectingFrom({ sourceId: node.id, branchValue, start, current: start }); setSelectedNodeId(node.id); setSelectedEdgeId(''); return
+    }
+    if (!connectingFrom || connectingFrom.sourceId === node.id || !canvas) { setConnectingFrom(null); return }
+    const branchWhen = connectingFrom.branchValue ? edgeWhenFromBranch(connectingFrom.sourceId, connectingFrom.branchValue) : undefined
+    if (!canvas.edges.some((edge) => edge.source === connectingFrom.sourceId && edge.target === node.id && edge.when === branchWhen)) {
+      setCanvas({ ...canvas, edges: [...canvas.edges, { id: `edge-${crypto.randomUUID().slice(0, 8)}`, source: connectingFrom.sourceId, target: node.id, when: branchWhen }] })
     }
     setConnectingFrom(null)
   }
@@ -244,7 +259,7 @@ export function WorkflowEditorWorkspace() {
   </section>
 }
 
-function WorkflowEditorCanvas(props: { draft: WorkflowDefinition; canvas: CanvasDraft; selectedNode: EditorNode | null; selectedNodeId: string; connectingFrom: ConnectingState | null; saving: boolean; canvasRef: React.RefObject<HTMLDivElement | null>; nodeStatuses: Record<string, WorkflowRunNodeStatus>; edgeStatuses: Record<string, WorkflowRunEdgeStatus>; onBack: () => void; onMetaChange: (patch: Partial<Pick<WorkflowDefinition, 'name' | 'description'>>) => void; onSave: () => void; onPublish: () => void; onRun: () => void; onAddNode: (type: CanvasNodeType) => void; onSelectNode: (node: EditorNode) => void; onDeleteNode: (id: string) => void; onUpdateNode: (id: string, patch: Partial<EditorNode>) => void; onUpdateConfig: (id: string, key: string, value: unknown) => void; onReplaceConfig?: (id: string, config: Record<string, unknown>) => void; onStartDrag: (event: React.PointerEvent<HTMLDivElement>, node: EditorNode) => void; onMoveDrag: (event: React.PointerEvent<HTMLDivElement>) => void; onFinishDrag: () => void; onPortClick: (node: EditorNode, branchValue?: string) => void; selectedEdge?: EditorEdge | null; selectedEdgeId?: string; onSelectEdge?: (id: string) => void; onDeleteEdge?: (id: string) => void; onUpdateEdge?: (id: string, patch: Partial<EditorEdge>) => void; filteredNodeMeta?: NodeMeta[]; nodeLibraryOpen?: boolean; nodeQuery?: string; canvasZoom?: number; onClearSelection?: () => void; onZoom?: (value: number) => void; onNodeLibraryOpen?: (open: boolean) => void; onNodeQuery?: (query: string) => void }) {
+function WorkflowEditorCanvas(props: { draft: WorkflowDefinition; canvas: CanvasDraft; selectedNode: EditorNode | null; selectedNodeId: string; connectingFrom: ConnectingState | null; saving: boolean; canvasRef: React.RefObject<HTMLDivElement | null>; nodeStatuses: Record<string, WorkflowRunNodeStatus>; edgeStatuses: Record<string, WorkflowRunEdgeStatus>; onBack: () => void; onMetaChange: (patch: Partial<Pick<WorkflowDefinition, 'name' | 'description'>>) => void; onSave: () => void; onPublish: () => void; onRun: () => void; onAddNode: (type: CanvasNodeType) => void; onSelectNode: (node: EditorNode) => void; onDeleteNode: (id: string) => void; onUpdateNode: (id: string, patch: Partial<EditorNode>) => void; onUpdateConfig: (id: string, key: string, value: unknown) => void; onReplaceConfig?: (id: string, config: Record<string, unknown>) => void; onStartDrag: (event: React.PointerEvent<HTMLDivElement>, node: EditorNode) => void; onMoveDrag: (event: React.PointerEvent<HTMLDivElement>) => void; onFinishDrag: () => void; onPortClick: (node: EditorNode, branchValue?: string, role?: 'source' | 'target') => void; selectedEdge?: EditorEdge | null; selectedEdgeId?: string; onSelectEdge?: (id: string) => void; onDeleteEdge?: (id: string) => void; onUpdateEdge?: (id: string, patch: Partial<EditorEdge>) => void; filteredNodeMeta?: NodeMeta[]; nodeLibraryOpen?: boolean; nodeQuery?: string; canvasZoom?: number; onClearSelection?: () => void; onZoom?: (value: number) => void; onNodeLibraryOpen?: (open: boolean) => void; onNodeQuery?: (query: string) => void }) {
   // Keep a single canvas implementation so the editor cannot drift between two
   // independently maintained render trees.
   return <EnhancedWorkflowCanvas {...props} />
@@ -274,15 +289,15 @@ function EnhancedWorkflowCanvas(props: EnhancedWorkflowCanvasProps) {
   const casesFor = (node: EditorNode) => Array.isArray(node.config.cases) ? node.config.cases as Array<Record<string, unknown>> : []
   return <section className="workflow-composer-stage">
     <header className="workflow-composer-topbar"><Space><Tooltip title="返回列表"><Button type="text" icon={<ArrowLeftOutlined />} onClick={props.onBack} /></Tooltip><span className="workflow-composer-logo"><BranchesOutlined /></span><div className="workflow-composer-meta"><Space size={6}><Input value={draft.name} variant="borderless" placeholder="Workflow 名称" onChange={(event) => props.onMetaChange({ name: event.target.value })} /><Tag color={draft.status === 'published' ? 'success' : 'default'}>{draft.status === 'published' ? 'published' : 'draft'}</Tag></Space><Input value={draft.description} variant="borderless" placeholder="填写 Workflow 描述" onChange={(event) => props.onMetaChange({ description: event.target.value })} /></div></Space><Space><Button icon={<PlayCircleFilled />} onClick={props.onRun}>试运行</Button><Button icon={<SaveOutlined />} loading={props.saving} onClick={props.onSave}>保存</Button><Button type="primary" icon={<CheckCircleFilled />} loading={props.saving} onClick={props.onPublish}>发布</Button></Space></header>
-    <div className="workflow-composer-body"><div className="workflow-canvas-toolbar"><Typography.Text type="secondary">画布</Typography.Text><Select size="small" value={String(zoom)} className="workflow-zoom-select" options={['0.5', '0.75', '0.9', '1', '1.25'].map((value) => ({ value, label: `${Number(value) * 100}%` }))} onChange={(value) => props.onZoom?.(Number(value))} /><Button size="small" icon={<ZoomInOutlined />} onClick={() => props.onZoom?.(Math.min(1.25, zoom + .1))}>缩放</Button><Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => props.onNodeLibraryOpen?.(true)}>添加节点</Button><span className="workflow-canvas-hint">{connectingFrom ? '选择目标节点完成连线' : '拖动节点或边，点击端口连线'}</span></div>
-      <div className="workflow-canvas-shell" ref={props.canvasRef} onPointerMove={props.onMoveDrag} onPointerUp={props.onFinishDrag} onPointerLeave={props.onFinishDrag} onClick={(event) => { if (event.target === event.currentTarget) props.onClearSelection?.() }}><div className="workflow-canvas-scale-space" style={{ width: 1800 * zoom, height: 1100 * zoom }}><div className="workflow-canvas-inner workflow-canvas-scale-layer" style={{ transform: `scale(${zoom})` }} onClick={(event) => { if (event.target === event.currentTarget) props.onClearSelection?.() }}>
-        <svg className="workflow-edge-layer" width="1800" height="1100"><defs><marker id="workflow-edge-arrow-enhanced" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6" markerHeight="6" orient="auto"><path d="M 3 2.5 L 9 6 L 3 9.5" /></marker></defs>{canvas.edges.map((edge) => { const path = edgePath(edge); if (!path) return null; const status = edgeStatuses[edge.id]; return <g key={edge.id}><path d={path} className={`workflow-edge-hit${selectedEdgeId === edge.id ? ' is-selected' : ''}`} onClick={(event) => { event.stopPropagation(); props.onSelectEdge?.(edge.id) }} /><path d={path} className={`workflow-edge-path${selectedEdgeId === edge.id ? ' is-selected' : ''}${status ? ` is-run-${status}` : ''}`} markerEnd="url(#workflow-edge-arrow-enhanced)" /></g> })}</svg>
+    <div className="workflow-composer-body"><div className="workflow-canvas-toolbar"><Select size="small" value={String(zoom)} className="workflow-zoom-select" options={['0.5', '0.75', '0.9', '1', '1.25'].map((value) => ({ value, label: `${Number(value) * 100}%` }))} onChange={(value) => props.onZoom?.(Number(value))} /><Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => props.onNodeLibraryOpen?.(true)}>添加节点</Button><Button size="small" type="primary" className="workflow-run-button" icon={<PlayCircleFilled />} onClick={props.onRun}>试运行</Button></div>
+      <div className="workflow-canvas-shell" ref={props.canvasRef} onPointerMove={props.onMoveDrag} onPointerUp={props.onFinishDrag} onPointerLeave={props.onFinishDrag} onClick={(event) => { if (event.target === event.currentTarget) props.onClearSelection?.() }}><div className="workflow-canvas-scale-space" style={{ width: CANVAS_WIDTH * zoom, height: CANVAS_HEIGHT * zoom }}><div className="workflow-canvas-inner workflow-canvas-scale-layer" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${zoom})` }} onClick={(event) => { if (event.target === event.currentTarget) props.onClearSelection?.() }}>
+        <svg className="workflow-edge-layer" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}><defs><marker id="workflow-edge-arrow-enhanced" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6" markerHeight="6" orient="auto"><path d="M 3 2.5 L 9 6 L 3 9.5" /></marker></defs>{canvas.edges.map((edge) => { const path = edgePath(edge); if (!path) return null; const status = edgeStatuses[edge.id]; return <g key={edge.id}><path d={path} className={`workflow-edge-hit${selectedEdgeId === edge.id ? ' is-selected' : ''}`} onClick={(event) => { event.stopPropagation(); props.onSelectEdge?.(edge.id) }} /><path d={path} className={`workflow-edge-path${selectedEdgeId === edge.id ? ' is-selected' : ''}${status ? ` is-run-${status}` : ''}`} markerEnd="url(#workflow-edge-arrow-enhanced)" /></g> })}{connectingFrom ? <path d={`M ${connectingFrom.start.x} ${connectingFrom.start.y} C ${connectingFrom.start.x + 70} ${connectingFrom.start.y}, ${connectingFrom.current.x - 70} ${connectingFrom.current.y}, ${connectingFrom.current.x} ${connectingFrom.current.y}`} className="workflow-edge-path is-preview" markerEnd="url(#workflow-edge-arrow-enhanced)" /> : null}</svg>
         {canvas.nodes.map((node) => { const meta = nodeMeta(node); const runtimeStatus = nodeStatuses[node.id]; const cases = casesFor(node); return <div key={node.id} className={`workflow-editor-node${selectedNodeId === node.id ? ' is-selected' : ''}${connectingFrom?.sourceId === node.id ? ' is-connecting' : ''}${runtimeStatus ? ` is-run-${runtimeStatus}` : ''}`} style={{ left: node.position.x, top: node.position.y, borderTopColor: meta.color }} onClick={(event) => { event.stopPropagation(); props.onSelectNode(node) }} onPointerDown={(event) => props.onStartDrag(event, node)}>
-          {node.type !== 'start' ? <button type="button" className="workflow-node-port workflow-node-port-in" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); props.onPortClick(node) }} aria-label={`连接到${node.title}`} /> : null}
+          {node.type !== 'start' ? <button type="button" className="workflow-node-port workflow-node-port-in" onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => { event.stopPropagation(); props.onPortClick(node, undefined, 'target') }} onMouseUp={(event) => { event.stopPropagation(); props.onPortClick(node, undefined, 'target') }} aria-label={`连接到${node.title}`} /> : null}
           <div className="workflow-editor-node-head"><span style={{ background: meta.color }}>{meta.icon}</span><strong>{node.title}</strong><small>{meta.label}</small></div>
-          {node.type === 'condition' ? <div className="workflow-condition-body">{cases.map((item, index) => { const branchValue = String(item.value || item.label || `分支 ${index + 1}`); return <div key={`${branchValue}-${index}`}><span>{String(item.label || `分支 ${index + 1}`)}</span><em>{branchValue}</em><button type="button" className="workflow-condition-port" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); props.onPortClick(node, branchValue) }} /></div> })}</div> : <div className="workflow-editor-node-summary">{summaryForNode(node).map((row) => <div key={row[0]}><span>{row[0]}</span><em>{row[1]}</em></div>)}</div>}
+          {node.type === 'condition' ? <div className="workflow-condition-body">{cases.map((item, index) => { const branchValue = String(item.value || item.label || `分支 ${index + 1}`); return <div key={`${branchValue}-${index}`}><span>{String(item.label || `分支 ${index + 1}`)}</span><em>{branchValue}</em><button type="button" className="workflow-condition-port" onPointerDown={(event) => { event.stopPropagation(); props.onPortClick(node, branchValue, 'source') }} onMouseDown={(event) => { event.stopPropagation(); props.onPortClick(node, branchValue, 'source') }} aria-label={`从${node.title}的${branchValue}分支连线`} /></div> })}</div> : <div className="workflow-editor-node-summary">{summaryForNode(node).map((row) => <div key={row[0]}><span>{row[0]}</span><em>{row[1]}</em></div>)}</div>}
           {runtimeStatus ? <div className="workflow-node-run-state"><Tag color={runtimeStatus === 'success' ? 'success' : runtimeStatus === 'running' ? 'processing' : runtimeStatus === 'failed' ? 'error' : 'warning'} icon={<CheckCircleFilled />}>{runtimeStatus}</Tag><DownOutlined /></div> : null}
-          {node.type !== 'condition' && node.type !== 'end' ? <button type="button" className="workflow-node-port workflow-node-port-out" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); props.onPortClick(node) }} aria-label={`从${node.title}连线`} /> : null}
+          {node.type !== 'condition' && node.type !== 'end' ? <button type="button" className="workflow-node-port workflow-node-port-out" onPointerDown={(event) => { event.stopPropagation(); props.onPortClick(node, undefined, 'source') }} onMouseDown={(event) => { event.stopPropagation(); props.onPortClick(node, undefined, 'source') }} aria-label={`从${node.title}连线`} /> : null}
         </div> })}
       </div></div></div>
       {props.nodeLibraryOpen ? <><button type="button" className="workflow-node-library-backdrop" aria-label="关闭节点库" onClick={() => props.onNodeLibraryOpen?.(false)} /><aside className="workflow-node-library"><div className="workflow-node-library-head"><Input prefix={<SearchOutlined />} value={props.nodeQuery || ''} onChange={(event) => props.onNodeQuery?.(event.target.value)} placeholder="搜索节点、插件、工作流" /><Button type="text" icon={<CloseOutlined />} onClick={() => props.onNodeLibraryOpen?.(false)} /></div>{Array.from(new Set((props.filteredNodeMeta || []).map((item) => item.category))).map((category) => <section key={category}><Typography.Text type="secondary">{category}</Typography.Text><div className="workflow-node-library-grid">{(props.filteredNodeMeta || []).filter((item) => item.category === category).map((item) => <button type="button" key={item.type} onClick={() => props.onAddNode(item.type)}><span style={{ background: item.color }}>{item.icon}</span><strong>{item.label}</strong><small>{item.description}</small></button>)}</div></section>)}</aside></> : null}
