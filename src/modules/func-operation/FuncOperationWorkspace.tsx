@@ -101,6 +101,8 @@ import { FunctionDocumentViewer } from './FunctionDocumentViewer'
 import { AgentConfigManagementWorkspace } from '../system/AgentConfigManagementWorkspace'
 import { AgentModelManagementWorkspace } from '../system/AgentModelManagementWorkspace'
 import { AgentSessionConfigManagementWorkspace } from '../system/AgentSessionConfigManagementWorkspace'
+import { WorkflowEditorWorkspace } from '../ai-agent/WorkflowEditorWorkspace'
+import { WorkflowTriggerWorkspace } from '../ai-agent/WorkflowTriggerWorkspace'
 import { MenuManagementWorkspace } from '../system/MenuManagementWorkspace'
 import { OperationLogWorkspace } from '../system/OperationLogWorkspace'
 import { NotificationManagementWorkspace } from '../system/NotificationManagementWorkspace'
@@ -158,6 +160,8 @@ const systemAdminViewComponents: Record<string, () => ReactNode> = {
   'agent-config': () => <AgentConfigManagementWorkspace />,
   'agent-session-configs': () => <AgentSessionConfigManagementWorkspace />,
   'agent-models': () => <AgentModelManagementWorkspace />,
+  'agent-workflows': () => <WorkflowEditorWorkspace />,
+  'agent-tasks': () => <WorkflowTriggerWorkspace />,
 }
 
 const EDITOR_STEPS = [
