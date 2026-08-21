@@ -92,6 +92,7 @@
 .workflow-inspector label { display: block; margin: 14px 0 6px; color: var(--console-muted); font-size: 12px; font-weight: 600; }
 .workflow-inspector-full { width: 100%; }
 .workflow-inspector-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.workflow-notification-recipient-panel { margin-top: 8px; }
 .workflow-config-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .workflow-config-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px minmax(0, 1fr) 28px; gap: 5px; align-items: center; }
 .workflow-condition-editor { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--console-line-soft); border-radius: 6px; background: var(--console-surface-tint); }
