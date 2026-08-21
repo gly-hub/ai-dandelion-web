@@ -1,7 +1,9 @@
-import type { ChatExtraItem, MessagePage, PersistedMessage, Session } from '../types'
+import type { AuthSession, ChatExtraItem, MessagePage, PersistedMessage, Session } from '../types'
 
 const SUCCESS_CODE = 20000
 const AUTH_STORAGE_KEY = 'ai-dandelion-auth'
+
+let refreshPromise: Promise<AuthSession | null> | null = null
 
 interface ResponseEnvelope<T> {
   code?: number
@@ -12,7 +14,7 @@ interface ResponseEnvelope<T> {
 type RawRecord = Record<string, unknown>
 
 export async function requestJSON<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(url, withAuthHeaders(options))
+  const response = await fetchWithAuth(url, options)
   const payload = (await response.json().catch(() => ({}))) as ResponseEnvelope<T>
 
   if (!response.ok) {
@@ -30,7 +32,8 @@ export function getAuthToken(): string {
     if (!raw) {
       return ''
     }
-    const parsed = JSON.parse(raw) as { token?: unknown }
+    const parsed = JSON.parse(raw) as { accessToken?: unknown; token?: unknown }
+    if (typeof parsed.accessToken === 'string') return parsed.accessToken
     return typeof parsed.token === 'string' ? parsed.token : ''
   } catch {
     return ''
@@ -44,6 +47,105 @@ export function authHeaders(input?: HeadersInit): Headers {
     headers.set('Authorization', `Bearer ${token}`)
   }
   return headers
+}
+
+export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const response = await fetch(url, withAuthHeaders(options))
+  if (response.status !== 401 || isAuthEndpoint(url)) {
+    return response
+  }
+  const refreshed = await refreshAuthSession()
+  if (!refreshed) {
+    expireAuthSession()
+    return response
+  }
+  return fetch(url, withAuthHeaders(options))
+}
+
+export async function refreshAuthSession(): Promise<AuthSession | null> {
+  if (refreshPromise) return refreshPromise
+  refreshPromise = (async () => {
+    const current = readAuthSession()
+    if (!current?.refreshToken) return null
+    let response: Response
+    try {
+      response = await fetch('/system/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: current.refreshToken }),
+      })
+    } catch {
+      return null
+    }
+    const payload = (await response.json().catch(() => ({}))) as ResponseEnvelope<RawRecord>
+    if (!response.ok || (typeof payload.code === 'number' && payload.code !== SUCCESS_CODE)) return null
+    const data = (payload.data ?? payload) as RawRecord
+    const accessToken = stringValue(data.accessToken ?? data.access_token)
+    const refreshToken = stringValue(data.refreshToken ?? data.refresh_token)
+    const accessExpiresIn = numberValue(data.accessExpiresIn ?? data.access_expires_in)
+    const refreshExpiresIn = numberValue(data.refreshExpiresIn ?? data.refresh_expires_in)
+    if (!accessToken || !refreshToken || accessExpiresIn <= 0 || refreshExpiresIn <= 0) return null
+    const now = Date.now()
+    const active = readAuthSession()
+    if (!active || active.refreshToken !== current.refreshToken) return null
+    const next: AuthSession = {
+      ...current,
+      accessToken,
+      refreshToken,
+      accessExpiresIn,
+      refreshExpiresIn,
+      accessExpiresAt: now + accessExpiresIn * 1000,
+      refreshExpiresAt: now + refreshExpiresIn * 1000,
+    }
+    sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next))
+    window.dispatchEvent(new CustomEvent('ai-dandelion-auth-updated', { detail: next }))
+    return next
+  })().finally(() => {
+    refreshPromise = null
+  })
+  return refreshPromise
+}
+
+export function readAuthSession(): AuthSession | null {
+  try {
+    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<AuthSession> & { token?: unknown; expiresIn?: unknown }
+    const accessToken = typeof parsed.accessToken === 'string' ? parsed.accessToken : typeof parsed.token === 'string' ? parsed.token : ''
+    if (!accessToken || !parsed.user?.id) return null
+    return {
+      user: parsed.user,
+      roles: Array.isArray(parsed.roles) ? parsed.roles : [],
+      accessToken,
+      refreshToken: typeof parsed.refreshToken === 'string' ? parsed.refreshToken : '',
+      accessExpiresIn: numberValue(parsed.accessExpiresIn ?? parsed.expiresIn),
+      refreshExpiresIn: numberValue(parsed.refreshExpiresIn),
+      accessExpiresAt: typeof parsed.accessExpiresAt === 'number' ? parsed.accessExpiresAt : undefined,
+      refreshExpiresAt: typeof parsed.refreshExpiresAt === 'number' ? parsed.refreshExpiresAt : undefined,
+    } as AuthSession
+  } catch {
+    return null
+  }
+}
+
+export function expireAuthSession() {
+  sessionStorage.removeItem(AUTH_STORAGE_KEY)
+  window.dispatchEvent(new Event('ai-dandelion-auth-expired'))
+}
+
+export function logoutAuthSession() {
+  const refreshToken = readAuthSession()?.refreshToken
+  expireAuthSession()
+  if (!refreshToken) return
+  void fetch('/system/auth/logout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  }).catch(() => undefined)
+}
+
+function isAuthEndpoint(url: string): boolean {
+  return url.endsWith('/system/auth/login') || url.endsWith('/system/auth/refresh') || url.endsWith('/system/auth/logout')
 }
 
 function withAuthHeaders(options: RequestInit): RequestInit {
