@@ -483,8 +483,12 @@ export interface SystemOperationLogPage {
 export interface AuthSession {
   user: SystemUser
   roles: SystemRole[]
-  token: string
-  expiresIn: number
+  accessToken: string
+  refreshToken: string
+  accessExpiresIn: number
+  refreshExpiresIn: number
+  accessExpiresAt?: number
+  refreshExpiresAt?: number
 }
 
 export interface SystemUser {

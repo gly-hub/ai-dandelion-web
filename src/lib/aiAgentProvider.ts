@@ -3,7 +3,7 @@ import type { TransformMessage, XRequestOptions } from '@ant-design/x-sdk'
 import { AbstractXRequestClass } from '@ant-design/x-sdk'
 import type { XRequestCallbacks } from '@ant-design/x-sdk'
 import type { AgentEvent, ChatExtraItem, ChatMessage, MessagePart, PersistedMessage, StreamChunk } from '../types'
-import { asRecord, authHeaders, normalizeMessage } from './api'
+import { asRecord, authHeaders, fetchWithAuth, normalizeMessage } from './api'
 
 export interface ChatInput {
   content: string
@@ -316,7 +316,7 @@ async function ensureSharedSocket() {
   if (sharedSocket?.readyState === WebSocket.OPEN) return
   if (sharedSocketReady) return sharedSocketReady
   setSharedConnectionStatus(reconnectAttempt > 0 ? 'reconnecting' : 'connecting')
-  const ticketResponse = await fetch('/realtime/ticket', { method: 'POST', headers: authHeaders() })
+  const ticketResponse = await fetchWithAuth('/realtime/ticket', { method: 'POST', headers: authHeaders() })
   let ticketPayload: { data?: { ticket?: string } }
   try {
     ticketPayload = (await ticketResponse.json()) as { data?: { ticket?: string } }
