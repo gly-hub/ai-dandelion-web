@@ -81,6 +81,7 @@ export function WorkflowEditorWorkspace() {
   const [runForm] = Form.useForm<RunValues>()
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const eventCursorRef = useRef(0)
+  const keyboardDeleteScopeRef = useRef<'canvas' | 'editing' | 'none'>('none')
 
   const selectedNode = useMemo(() => canvas?.nodes.find((node) => node.id === selectedNodeId) || null, [canvas, selectedNodeId])
   const selectedEdge = useMemo(() => canvas?.edges.find((edge) => edge.id === selectedEdgeId) || null, [canvas, selectedEdgeId])
@@ -202,6 +203,57 @@ export function WorkflowEditorWorkspace() {
   function updateEdge(id: string, patch: Partial<EditorEdge>) { setCanvas((current) => current ? { ...current, edges: current.edges.map((edge) => edge.id === id ? { ...edge, ...patch } : edge) } : current) }
   function deleteEdge(id: string) { setCanvas((current) => current ? { ...current, edges: current.edges.filter((edge) => edge.id !== id) } : current); setSelectedEdgeId('') }
   function deleteNode(id: string) { setCanvas((current) => current ? { ...current, nodes: current.nodes.filter((node) => node.id !== id), edges: current.edges.filter((edge) => edge.source !== id && edge.target !== id) } : current); setSelectedNodeId(''); setSelectedEdgeId('') }
+
+  useEffect(() => {
+    const isEditingTarget = (target: EventTarget | Element | null) => {
+      if (!(target instanceof HTMLElement)) return false
+      const tagName = target.tagName.toLowerCase()
+      return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable || Boolean(
+        target.closest('.workflow-inspector, .ant-modal, .workflow-node-library, .ant-select-dropdown, .ant-picker-dropdown, .ant-input, .ant-select, .ant-input-number, textarea'),
+      )
+    }
+
+    const isEditingPath = (event: KeyboardEvent) => event.composedPath().some((target) => isEditingTarget(target))
+    const isCanvasTarget = (target: EventTarget | Element | null) => target instanceof HTMLElement && Boolean(
+      target.closest('.workflow-canvas-shell, .workflow-editor-node, .workflow-edge-layer, .workflow-canvas-scale-layer'),
+    )
+    const updateKeyboardDeleteScope = (event: Event) => {
+      const path = event.composedPath()
+      if (path.some((target) => isEditingTarget(target))) {
+        keyboardDeleteScopeRef.current = 'editing'
+        return
+      }
+      if (path.some((target) => isCanvasTarget(target))) {
+        keyboardDeleteScopeRef.current = 'canvas'
+        return
+      }
+      keyboardDeleteScopeRef.current = 'none'
+    }
+    const handleDeleteKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return
+      if (isEditingPath(event) || isEditingTarget(event.target) || isEditingTarget(document.activeElement)) return
+      if (keyboardDeleteScopeRef.current !== 'canvas') return
+      if (selectedEdgeId) {
+        event.preventDefault()
+        deleteEdge(selectedEdgeId)
+        return
+      }
+      if (selectedNode) {
+        event.preventDefault()
+        deleteNode(selectedNode.id)
+      }
+    }
+
+    document.addEventListener('pointerdown', updateKeyboardDeleteScope, true)
+    document.addEventListener('focusin', updateKeyboardDeleteScope, true)
+    window.addEventListener('keydown', handleDeleteKey)
+    return () => {
+      document.removeEventListener('pointerdown', updateKeyboardDeleteScope, true)
+      document.removeEventListener('focusin', updateKeyboardDeleteScope, true)
+      window.removeEventListener('keydown', handleDeleteKey)
+    }
+  }, [selectedEdgeId, selectedNode])
+
   function addNode(type: CanvasNodeType) {
     if (!canvas) return
     const meta = NODE_META.find((item) => item.type === type)!
