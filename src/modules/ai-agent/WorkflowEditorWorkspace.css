@@ -27,9 +27,10 @@
 .workflow-canvas-scale-space { position: relative; }
 .workflow-canvas-scale-layer { transform-origin: top left; }
 .workflow-edge-layer { position: absolute; inset: 0; overflow: visible; pointer-events: auto; }
+.workflow-edge-layer marker path { fill: none; stroke: #a7b5c8; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .workflow-edge-path { fill: none; stroke: #a7b5c8; stroke-width: 2; marker-end: url(#workflow-edge-arrow); }
-.workflow-edge-hit { fill: none; stroke: transparent; stroke-width: 16; cursor: pointer; pointer-events: stroke; }
-.workflow-edge-hit.is-selected { stroke: rgba(37, 99, 235, .14); }
+.workflow-edge-hit { fill: none; stroke: transparent; stroke-width: 26; cursor: pointer; pointer-events: stroke; }
+.workflow-edge-hit.is-selected { cursor: grab; stroke: rgba(37, 99, 235, .14); }
 .workflow-edge-path.is-selected { stroke: #2563b8; stroke-width: 3; }
 .workflow-edge-path.is-run-active { stroke: #16836a; stroke-width: 3; }
 .workflow-edge-path.is-run-skipped { stroke: #aab4c2; stroke-dasharray: 5 4; }
