@@ -91,7 +91,7 @@ export function TabNavigationProvider({ children }: { children: ReactNode }) {
 
   const tabBarVisible = activeTabScope !== null && tabs.length > 0
 
-  const resetTabsOnModuleSwitch = useCallback((_nextModule: ModuleKey) => {
+  const resetTabsOnModuleSwitch = useCallback(() => {
     setTabsByScope({})
   }, [])
 
