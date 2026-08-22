@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { App as AntApp, Avatar, Badge, Button, Dropdown, Empty, List, Popover, Space, Spin, Tag, Tooltip } from 'antd'
-import { BellOutlined, CloudSyncOutlined, DragOutlined, ExpandOutlined, LogoutOutlined, MessageOutlined, QuestionCircleOutlined, ReloadOutlined, ShrinkOutlined } from '@ant-design/icons'
+import { BellOutlined, CloudSyncOutlined, DragOutlined, ExpandOutlined, LogoutOutlined, MenuOutlined, MessageOutlined, QuestionCircleOutlined, ReloadOutlined, ShrinkOutlined } from '@ant-design/icons'
 import { XProvider } from '@ant-design/x'
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
@@ -75,6 +75,7 @@ function ConsoleAppContent() {
   const [notifications, setNotifications] = useState<SystemNotification[]>([])
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>('connecting')
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const handledNotificationIdsRef = useRef(new Set<string>())
   const handledNotificationEventsRef = useRef(new Set<string>())
   const [viewportSize, setViewportSize] = useState(() => getViewportSize())
@@ -140,6 +141,10 @@ function ConsoleAppContent() {
   }, [chatMode, closeAgentChat])
 
   useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
     if (!currentUser?.id) return undefined
     void ensureRealtimeConnection().catch(() => undefined)
     void refreshNotifications()
@@ -199,16 +204,42 @@ function ConsoleAppContent() {
     setUnreadNotificationCount((count) => Math.max(0, count - 1))
   }
 
+  const handleModuleNavigationCapture = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement
+    const sidebar = target.closest('.module-sidebar')
+    if (!sidebar) {
+      return
+    }
+    if (target.closest('button:not(.module-sidebar-nav-group-head), a')) {
+      setMobileNavOpen(false)
+    }
+  }
+
   return (
     <div className="console-app">
-      <main className={`console-workspace${immersiveFuncEditor ? ' immersive-func-editor' : ''}`} style={immersiveViewportStyle}>
+      <main
+        className={`console-workspace${immersiveFuncEditor ? ' immersive-func-editor' : ''}${mobileNavOpen ? ' mobile-nav-open' : ''}`}
+        style={immersiveViewportStyle}
+        onClickCapture={handleModuleNavigationCapture}
+      >
         {immersiveFuncEditor ? null : (
           <header className="workspace-topbar">
             <div className="workspace-brand" aria-label="AiDandelion">
               <img className="workspace-brand-logo" src="/ai-dandelion-logo.png" alt="AiDandelion" />
             </div>
             <div className="workspace-topbar-actions">
-              <Tooltip title="帮助中心"><Button type="text" shape="circle" icon={<QuestionCircleOutlined />} /></Tooltip>
+              <Tooltip title="打开导航">
+                <Button
+                  type="text"
+                  shape="circle"
+                  className="workspace-mobile-nav-trigger"
+                  icon={<MenuOutlined />}
+                  aria-label="打开导航"
+                  aria-expanded={mobileNavOpen}
+                  onClick={() => setMobileNavOpen((open) => !open)}
+                />
+              </Tooltip>
+              <Tooltip title="帮助中心"><Button type="text" shape="circle" className="workspace-help-button" icon={<QuestionCircleOutlined />} /></Tooltip>
               <Dropdown
                 trigger={['click']}
                 menu={{
@@ -256,6 +287,15 @@ function ConsoleAppContent() {
             </div>
           </header>
         )}
+
+        {mobileNavOpen && !immersiveFuncEditor ? (
+          <button
+            type="button"
+            className="workspace-mobile-nav-scrim"
+            aria-label="关闭导航"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        ) : null}
 
         <section
           className={`console-module${

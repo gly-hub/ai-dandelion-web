@@ -84,6 +84,8 @@ body,
 
 .workspace-topbar-actions .ant-btn:hover { color: var(--workspace-blue); border-color: #bad4f7; background: #f4f8ff; }
 
+.workspace-mobile-nav-trigger { display: none; }
+
 .workspace-topbar-actions .workspace-realtime-status {
   height: 34px;
   color: #2b8960;
@@ -1317,13 +1319,77 @@ body,
   .workspace-brand { padding-inline: 14px; font-size: 19px; }
   .workspace-brand-logo { height: 40px; }
   .workspace-topbar-actions { padding-right: 14px; }
-  .workspace-topbar-actions .ant-btn:first-child { display: none; }
+  .workspace-topbar-actions .workspace-help-button { display: none; }
   .agent-chat-modal-backdrop { padding: 12px; }
   .agent-chat-modal-backdrop .agent-chat-modal,
   .agent-chat-modal-backdrop .agent-layout-shell.agent-layout-embedded { grid-template-columns: minmax(0, 1fr) !important; width: calc(100vw - 24px) !important; height: calc(100vh - 24px); }
   .agent-chat-modal-backdrop .session-rail { display: none !important; }
   .agent-chat-modal-backdrop .message-stage { padding: 22px 20px !important; }
   .agent-chat-modal-backdrop .agent-modal-chat-title span { display: none; }
+}
+
+@media (max-width: 768px) {
+  :root { --workspace-sidebar-width: 280px; }
+
+  .workspace-brand {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    padding-inline: 12px;
+  }
+
+  .workspace-brand-logo { width: min(100%, 156px); }
+
+  .workspace-topbar-actions {
+    gap: 4px;
+    padding: 0 8px;
+  }
+
+  .workspace-mobile-nav-trigger { display: inline-flex; }
+
+  .console-app .func-shell,
+  .console-app .func-shell-admin,
+  .console-app .system-console-shell {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace-mobile-nav-scrim {
+    position: fixed;
+    z-index: 700;
+    inset: var(--workspace-header-height) 0 0;
+    display: block;
+    width: 100%;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: rgba(21, 43, 72, .32);
+    cursor: default;
+  }
+
+  .console-app .func-sidebar,
+  .console-app .func-admin-sidebar,
+  .console-app .system-console-shell > .module-sidebar {
+    position: fixed;
+    z-index: 710;
+    top: var(--workspace-header-height);
+    bottom: 0;
+    left: 0;
+    width: min(82vw, 280px) !important;
+    min-width: min(82vw, 280px) !important;
+    max-width: min(82vw, 280px) !important;
+    height: calc(100dvh - var(--workspace-header-height));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translateX(-100%);
+    transition: transform .2s ease;
+    box-shadow: 14px 0 30px rgba(27, 58, 94, .18);
+  }
+
+  .console-workspace.mobile-nav-open .func-sidebar,
+  .console-workspace.mobile-nav-open .func-admin-sidebar,
+  .console-workspace.mobile-nav-open .system-console-shell > .module-sidebar {
+    transform: translateX(0);
+  }
 }
 
 /* Compact mode is deliberately pointer-transparent outside its own window. */
