@@ -10,7 +10,7 @@ import type {
   AgentModelOption,
   SystemMenu,
 } from '../../types'
-import { FunctionGenerationConsole, type ConversationNotice } from './FunctionGenerationConsole'
+import { FunctionGenerationConsole, type ChatMessageInfo, type ConversationNotice } from './FunctionGenerationConsole'
 import { resolveFunctionReadiness } from './functionReadiness'
 import type { ChatInput } from '../../lib/aiAgentProvider'
 import { FuncEditorContent } from './FuncEditorContent'
@@ -43,7 +43,7 @@ interface FuncEditorLayoutProps {
   conversation: EditorConversation
   directoryMenus: SystemMenu[]
   openedGenerationIds: string[]
-  messages: any[]
+  messages: ChatMessageInfo[]
   isRequesting: boolean
   isDefaultMessagesRequesting: boolean
   activeSessionId: string
