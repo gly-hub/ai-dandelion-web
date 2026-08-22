@@ -14,7 +14,7 @@ import type {
   ExternalAPIImportResult,
 } from '../types'
 import { GeneratedAppInvokeError } from '../types'
-import { asRecord, authHeaders, requestJSON } from './api'
+import { asRecord, fetchWithAuth, requestJSON } from './api'
 
 export async function listOperationFunctions(): Promise<OperationFunction[]> {
   const data = await requestJSON<{ functions?: unknown[] }>('/func-operation/functions/')
@@ -414,10 +414,9 @@ export async function loadGeneratedAppModuleSourceGraph(
   const bundleUrl = new URL(entryUrl)
   bundleUrl.pathname = bundleUrl.pathname.replace(/\/frontend\.js$/, '/bundle')
   bundleUrl.searchParams.set('v', String(cacheBust))
-  const response = await fetch(bundleUrl, {
+  const response = await fetchWithAuth(bundleUrl.toString(), {
     credentials: 'same-origin',
     cache: 'no-store',
-    headers: authHeaders(),
     signal: options?.signal,
   })
   const payload = await response.json().catch(() => ({}))
