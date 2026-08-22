@@ -43,8 +43,10 @@ export function getAuthToken(): string {
 export function authHeaders(input?: HeadersInit): Headers {
   const headers = new Headers(input)
   const token = getAuthToken()
-  if (token && !headers.has('Authorization')) {
+  if (token) {
     headers.set('Authorization', `Bearer ${token}`)
+  } else {
+    headers.delete('Authorization')
   }
   return headers
 }
