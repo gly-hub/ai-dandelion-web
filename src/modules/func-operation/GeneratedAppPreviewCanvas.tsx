@@ -266,9 +266,7 @@ export function GeneratedAppPreviewCanvas({
     let sourceTimedOut = false
     let sandboxBooted = false
     let sourceGraph: { entry: string; modules: Record<string, string> } | null = null
-    let sourceTimeout: number | undefined
     let renderTimeout: number | undefined
-    let sandboxBootTimeout: number | undefined
     const channel = createSandboxChannel()
     const sourceAbortController = new AbortController()
 
@@ -276,8 +274,9 @@ export function GeneratedAppPreviewCanvas({
     if (!frame) {
       return
     }
+    const isCurrentRender = () => !canceled
     const postInit = () => {
-      if (!frame.contentWindow || !sandboxReady || !sourceGraph || canceled || sourceTimedOut || initializationPosted) {
+      if (!frame.contentWindow || !sandboxReady || !sourceGraph || !isCurrentRender() || sourceTimedOut || initializationPosted) {
         return
       }
       initializationPosted = true
@@ -286,7 +285,7 @@ export function GeneratedAppPreviewCanvas({
       }
       setLoading(true)
       renderTimeout = window.setTimeout(() => {
-        if (!canceled) {
+        if (isCurrentRender()) {
           reportError({
             kind: 'load',
             message: '功能页面渲染超时',
@@ -305,7 +304,7 @@ export function GeneratedAppPreviewCanvas({
       }, '*')
     }
     const onMessage = (event: MessageEvent<Record<string, unknown>>) => {
-      if (event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') {
+      if (!isCurrentRender() || event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') {
         return
       }
       if (event.data.type === 'generated-app-sandbox:ready') {
@@ -327,7 +326,7 @@ export function GeneratedAppPreviewCanvas({
         return
       }
       if (event.data.type === 'generated-app-sandbox:rendered') {
-        if (!canceled) {
+        if (isCurrentRender()) {
           if (renderTimeout !== undefined) {
             window.clearTimeout(renderTimeout)
           }
@@ -336,7 +335,7 @@ export function GeneratedAppPreviewCanvas({
         return
       }
       if (event.data.type === 'generated-app-sandbox:error' || event.data.type === 'generated-app-sandbox:runtime-error') {
-        if (!canceled) {
+        if (isCurrentRender()) {
           if (renderTimeout !== undefined) {
             window.clearTimeout(renderTimeout)
           }
@@ -358,35 +357,35 @@ export function GeneratedAppPreviewCanvas({
         return
       }
       void runFunctionRef.current(appSnapshot.id, event.data.payload)
-        .then((result) => postSandboxMessage(event.source, { type: 'generated-app-sandbox:invoke-result', channel, requestId, result }))
-        .catch((err) => {
-          if (!canceled) {
-            reportError(toPreviewError(err, 'invoke'))
+        .then((result) => {
+          if (isCurrentRender()) {
+            postSandboxMessage(event.source, { type: 'generated-app-sandbox:invoke-result', channel, requestId, result })
           }
-          postSandboxMessage(event.source, { type: 'generated-app-sandbox:invoke-error', channel, requestId, message: errorMessage(err) })
+        })
+        .catch((err) => {
+          if (isCurrentRender()) {
+            reportError(toPreviewError(err, 'invoke'))
+            postSandboxMessage(event.source, { type: 'generated-app-sandbox:invoke-error', channel, requestId, message: errorMessage(err) })
+          }
         })
     }
     window.addEventListener('message', onMessage)
+    reportError(null)
     setLoading(true)
-    frame.onload = () => {
-      if (canceled || sandboxBooted) {
+    const sandboxBootTimeout = window.setTimeout(() => {
+      if (!isCurrentRender() || sandboxBooted) {
         return
       }
-      sandboxBootTimeout = window.setTimeout(() => {
-        if (canceled || sandboxBooted) {
-          return
-        }
-        reportError({
-          kind: 'render',
-          message: '功能页面隔离环境未能启动',
-          hint: '请重新加载页面代码；若仍失败，请使用“让 AI 修复页面”查看页面运行错误。',
-        })
-        setLoading(false)
-      }, 3_000)
-    }
+      reportError({
+        kind: 'render',
+        message: '功能页面隔离环境未能启动',
+        hint: '请重新加载页面代码；若仍失败，请使用“让 AI 修复页面”查看页面运行错误。',
+      })
+      setLoading(false)
+    }, 3_000)
     frame.srcdoc = GENERATED_APP_SANDBOX_BOOTSTRAP.replace('__GENERATED_APP_SANDBOX_CHANNEL__', channel)
-    sourceTimeout = window.setTimeout(() => {
-      if (!canceled) {
+    const sourceTimeout = window.setTimeout(() => {
+      if (isCurrentRender()) {
         sourceTimedOut = true
         sourceAbortController.abort()
         reportError({
@@ -402,6 +401,9 @@ export function GeneratedAppPreviewCanvas({
       signal: sourceAbortController.signal,
     })
       .then((graph) => {
+        if (!isCurrentRender()) {
+          return
+        }
         sourceGraph = graph
         postInit()
       })
@@ -409,7 +411,7 @@ export function GeneratedAppPreviewCanvas({
         if (sourceTimeout !== undefined) {
           window.clearTimeout(sourceTimeout)
         }
-        if (!canceled && !sourceTimedOut && !(err instanceof DOMException && err.name === 'AbortError')) {
+        if (isCurrentRender() && !sourceTimedOut && !(err instanceof DOMException && err.name === 'AbortError')) {
           sourceLoadFailed = true
           reportError(toPreviewError(err, 'load'))
           setLoading(false)
@@ -429,8 +431,6 @@ export function GeneratedAppPreviewCanvas({
       }
       sourceAbortController.abort()
       window.removeEventListener('message', onMessage)
-      frame.onload = null
-      frame.srcdoc = ''
     }
   }, [appSnapshot, enabled, permissions, renderKey, reloadSeed, reportError])
 
