@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { App, Button, Card, Form, Input } from 'antd'
+import { LockOutlined, UserOutlined } from '@ant-design/icons'
+import { App, Button, Form, Input } from 'antd'
 import { useAuth } from '../../contexts/AuthContext'
 
 type LoginFormValues = {
@@ -30,27 +31,38 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      <Card
-        className="login-card"
-        title={(
-          <span className="login-brand-title">
-            <img className="login-brand-logo" src="/ai-dandelion-logo.png" alt="AiDandelion" />
-            <span>登录</span>
-          </span>
-        )}
-      >
-        <Form<LoginFormValues> form={form} layout="vertical" requiredMark="optional">
-          <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input placeholder="用户名" autoComplete="username" />
-          </Form.Item>
-          <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password placeholder="密码" autoComplete="current-password" />
-          </Form.Item>
-          <Button type="primary" block loading={submitting} onClick={() => void handleSubmit()}>
-            登录
-          </Button>
-        </Form>
-      </Card>
+      <main className="login-frame" aria-label="AiDandelion 登录">
+        <section className="login-brand-panel">
+          <img className="login-brand-logo" src="/ai-dandelion-logo.png" alt="AiDandelion" />
+          <div className="login-brand-copy">
+            <p className="login-brand-kicker">AI WORKSPACE</p>
+            <h1>把想法变成可用的功能。</h1>
+            <p>进入工作台，继续管理 AI Agent、生成的功能和业务数据。</p>
+          </div>
+          <p className="login-brand-status"><span aria-hidden="true" />安全连接 · 工作空间已就绪</p>
+        </section>
+
+        <section className="login-form-panel">
+          <div className="login-form-wrap">
+            <header className="login-form-heading">
+              <h2>欢迎回来</h2>
+              <p>使用你的工作空间账号登录</p>
+            </header>
+            <Form<LoginFormValues> form={form} layout="vertical" requiredMark={false} onFinish={() => void handleSubmit()}>
+              <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }]}>
+                <Input prefix={<UserOutlined />} placeholder="请输入用户名" autoComplete="username" size="large" />
+              </Form.Item>
+              <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
+                <Input.Password prefix={<LockOutlined />} placeholder="请输入密码" autoComplete="current-password" size="large" />
+              </Form.Item>
+              <Button className="login-submit-button" type="primary" htmlType="submit" block loading={submitting}>
+                登录工作台
+              </Button>
+            </Form>
+            <p className="login-form-footer">登录即表示你同意工作空间的使用规范</p>
+          </div>
+        </section>
+      </main>
     </div>
   )
 }

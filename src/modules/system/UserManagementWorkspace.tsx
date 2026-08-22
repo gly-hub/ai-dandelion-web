@@ -83,7 +83,7 @@ export function UserManagementWorkspace() {
 
   const openEditModal = async (user: SystemUser) => {
     setEditingUser(user)
-    let roleIds = user.roleIds || []
+    let roleIds: string[]
     try {
       roleIds = await getUserRoles(user.id)
     } catch {
