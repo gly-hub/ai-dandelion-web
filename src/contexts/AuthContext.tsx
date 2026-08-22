@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { loginSystem } from '../lib/systemApi'
+import { expireAuthSession, logoutAuthSession, readAuthSession, refreshAuthSession } from '../lib/api'
+import { loginSystem as loginSystemRequest } from '../lib/systemApi'
 import type { AuthSession, SystemUser } from '../types'
 
 const AUTH_STORAGE_KEY = 'ai-dandelion-auth'
@@ -14,41 +15,50 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-function readStoredSession(): AuthSession | null {
-  try {
-    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY)
-    if (!raw) {
-      return null
-    }
-    const parsed = JSON.parse(raw) as AuthSession
-    if (!parsed?.user?.id) {
-      return null
-    }
-    return parsed
-  } catch {
-    return null
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setSession(readStoredSession())
+    setSession(readAuthSession())
     setLoading(false)
   }, [])
 
   const login = useCallback(async (username: string, password: string) => {
-    const next = await loginSystem({ username, password })
+    const next = await loginSystemRequest({ username, password })
     sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next))
     setSession(next)
   }, [])
 
   const logout = useCallback(() => {
-    sessionStorage.removeItem(AUTH_STORAGE_KEY)
+    logoutAuthSession()
     setSession(null)
   }, [])
+
+  useEffect(() => {
+    const handleExpired = () => setSession(null)
+    const handleUpdated = (event: Event) => {
+      const next = (event as CustomEvent<AuthSession>).detail
+      if (next?.user?.id) setSession(next)
+    }
+    window.addEventListener('ai-dandelion-auth-expired', handleExpired)
+    window.addEventListener('ai-dandelion-auth-updated', handleUpdated)
+    return () => {
+      window.removeEventListener('ai-dandelion-auth-expired', handleExpired)
+      window.removeEventListener('ai-dandelion-auth-updated', handleUpdated)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!session?.refreshToken || !session.accessExpiresAt) return undefined
+    const delay = Math.max(1000, session.accessExpiresAt - Date.now() - 60_000)
+    const timer = window.setTimeout(() => {
+      void refreshAuthSession().then((next) => {
+        if (!next) expireAuthSession()
+      })
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [session])
 
   const value = useMemo<AuthContextValue>(
     () => ({

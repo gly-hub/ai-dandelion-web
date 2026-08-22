@@ -21,7 +21,7 @@ interface BubblePayload {
   sessionId?: string
 }
 
-interface ChatMessageInfo {
+export interface ChatMessageInfo {
   id: string | number
   message: ChatMessage
   status: ChatStatus
