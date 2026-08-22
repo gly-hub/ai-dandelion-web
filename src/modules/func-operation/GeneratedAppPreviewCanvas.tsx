@@ -40,8 +40,9 @@ const EMPTY_NAV_TREE: SystemMenu[] = []
 const GENERATED_APP_SANDBOX_BOOTSTRAP = String.raw`<!doctype html>
 <html><head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-<style>html,body,#generated-app-root{margin:0;width:100%;height:100%;overflow:hidden}#generated-app-root{box-sizing:border-box}</style>
+<style>html,body{margin:0;width:100%;min-height:100%;overflow-x:hidden}#generated-app-root{box-sizing:border-box;width:100%;min-height:100%}</style>
 </head><body><div id="generated-app-root"></div><script>
 (() => {
   const root = document.getElementById('generated-app-root');
