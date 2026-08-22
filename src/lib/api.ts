@@ -32,9 +32,8 @@ export function getAuthToken(): string {
     if (!raw) {
       return ''
     }
-    const parsed = JSON.parse(raw) as { accessToken?: unknown; token?: unknown }
-    if (typeof parsed.accessToken === 'string') return parsed.accessToken
-    return typeof parsed.token === 'string' ? parsed.token : ''
+    const parsed = JSON.parse(raw) as { accessToken?: unknown }
+    return typeof parsed.accessToken === 'string' ? parsed.accessToken : ''
   } catch {
     return ''
   }
@@ -112,15 +111,15 @@ export function readAuthSession(): AuthSession | null {
   try {
     const raw = sessionStorage.getItem(AUTH_STORAGE_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<AuthSession> & { token?: unknown; expiresIn?: unknown }
-    const accessToken = typeof parsed.accessToken === 'string' ? parsed.accessToken : typeof parsed.token === 'string' ? parsed.token : ''
+    const parsed = JSON.parse(raw) as Partial<AuthSession>
+    const accessToken = typeof parsed.accessToken === 'string' ? parsed.accessToken : ''
     if (!accessToken || !parsed.user?.id) return null
     return {
       user: parsed.user,
       roles: Array.isArray(parsed.roles) ? parsed.roles : [],
       accessToken,
       refreshToken: typeof parsed.refreshToken === 'string' ? parsed.refreshToken : '',
-      accessExpiresIn: numberValue(parsed.accessExpiresIn ?? parsed.expiresIn),
+      accessExpiresIn: numberValue(parsed.accessExpiresIn),
       refreshExpiresIn: numberValue(parsed.refreshExpiresIn),
       accessExpiresAt: typeof parsed.accessExpiresAt === 'number' ? parsed.accessExpiresAt : undefined,
       refreshExpiresAt: typeof parsed.refreshExpiresAt === 'number' ? parsed.refreshExpiresAt : undefined,

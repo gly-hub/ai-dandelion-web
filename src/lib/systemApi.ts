@@ -66,7 +66,7 @@ export async function loginSystem(input: {
   username: string
   password: string
 }): Promise<AuthSession> {
-  const data = await requestJSON<{ user?: unknown; roles?: unknown[]; token?: unknown; expiresIn?: unknown; expires_in?: unknown; accessToken?: unknown; access_token?: unknown; refreshToken?: unknown; refresh_token?: unknown; accessExpiresIn?: unknown; access_expires_in?: unknown; refreshExpiresIn?: unknown; refresh_expires_in?: unknown }>('/system/auth/login', {
+  const data = await requestJSON<{ user?: unknown; roles?: unknown[]; accessToken?: unknown; access_token?: unknown; refreshToken?: unknown; refresh_token?: unknown; accessExpiresIn?: unknown; access_expires_in?: unknown; refreshExpiresIn?: unknown; refresh_expires_in?: unknown }>('/system/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -74,9 +74,9 @@ export async function loginSystem(input: {
       password: input.password,
     }),
   })
-  const accessExpiresIn = numberValue(data.accessExpiresIn ?? data.access_expires_in ?? data.expiresIn ?? data.expires_in)
+  const accessExpiresIn = numberValue(data.accessExpiresIn ?? data.access_expires_in)
   const refreshExpiresIn = numberValue(data.refreshExpiresIn ?? data.refresh_expires_in)
-  const accessToken = stringValue(data.accessToken ?? data.access_token ?? data.token)
+  const accessToken = stringValue(data.accessToken ?? data.access_token)
   const refreshToken = stringValue(data.refreshToken ?? data.refresh_token)
   const now = Date.now()
   return {
