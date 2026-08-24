@@ -413,6 +413,38 @@ export interface GeneratedAppInvokeResult {
   errorMessage?: string
   stage?: string
   hint?: string
+	  executionLogId?: string
+}
+
+export interface FunctionExecutionLogEvent {
+  stream: string
+  content: string
+  timestamp: number
+}
+
+export interface FunctionExecutionLog {
+  id: string
+  functionId: string
+  appId: string
+  userId: string
+	requestId: string
+  invocationType: 'preview' | 'published' | string
+  version: string
+  status: 'succeeded' | 'failed' | string
+  stage: string
+  errorCode: string
+  errorMessage: string
+  inputJson: string
+  outputJson: string
+  logs: FunctionExecutionLogEvent[]
+  logsTruncated: boolean
+  durationMs: number
+  createdAt: number
+}
+
+export interface FunctionExecutionLogPage {
+  logs: FunctionExecutionLog[]
+  total: number
 }
 
 export class GeneratedAppInvokeError extends Error {
