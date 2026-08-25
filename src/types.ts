@@ -162,7 +162,20 @@ export interface AgentEvent {
   done?: boolean
   message?: PersistedMessage
   agentSessionId?: string
+  uiAction?: UIAction
 }
+
+export type UIAction =
+  {
+    action: 'navigate'
+    target: {
+      targetId: string
+      module?: ModuleKey
+      viewKey?: string
+      sourceType?: string
+      sourceId?: string
+    }
+  }
 
 export interface StreamChunk {
   event: string
