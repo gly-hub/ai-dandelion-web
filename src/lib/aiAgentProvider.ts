@@ -2,7 +2,7 @@ import { AbstractChatProvider } from '@ant-design/x-sdk'
 import type { TransformMessage, XRequestOptions } from '@ant-design/x-sdk'
 import { AbstractXRequestClass } from '@ant-design/x-sdk'
 import type { XRequestCallbacks } from '@ant-design/x-sdk'
-import type { AgentEvent, ChatExtraItem, ChatMessage, MessagePart, PersistedMessage, StreamChunk } from '../types'
+import type { AgentEvent, ChatExtraItem, ChatMessage, MessagePart, PersistedMessage, StreamChunk, UIAction } from '../types'
 import { asRecord, authHeaders, fetchWithAuth, normalizeMessage } from './api'
 
 export interface ChatInput {
@@ -200,6 +200,7 @@ export function createAiAgentProvider(
 const sessionProviders = new Map<string, AiAgentStreamProvider>()
 const visibleSessionProviderCounts = new Map<string, number>()
 const sessionProviderSettledListeners = new Set<(sessionId: string) => void>()
+const aiAgentUIActionListeners = new Set<(action: UIAction) => void>()
 
 export function getAiAgentSessionProvider(
   sessionId: string,
@@ -246,6 +247,11 @@ export function subscribeAiAgentSessionProviderSettled(listener: (sessionId: str
   return () => {
     sessionProviderSettledListeners.delete(listener)
   }
+}
+
+export function subscribeAiAgentUIActions(listener: (action: UIAction) => void) {
+  aiAgentUIActionListeners.add(listener)
+  return () => { aiAgentUIActionListeners.delete(listener) }
 }
 
 export function disposeAiAgentSessionProvider(sessionId: string) {
@@ -516,6 +522,9 @@ class RealtimeRequest extends AbstractXRequestClass<ChatInput, StreamChunk, Chat
     const payload = (envelope.payload || {}) as Record<string, unknown>
     const streamType = typeof payload.type === 'string' ? payload.type : envelope.type?.replace('ai-agent.stream.', '') || 'text_delta'
     const chunk = { event: streamType, data: normalizeStreamPayload(streamType, payload) } as StreamChunk
+    if (chunk.data.type === 'ui_action' && chunk.data.uiAction) {
+      aiAgentUIActionListeners.forEach((listener) => listener(chunk.data.uiAction!))
+    }
     if (envelope.type === 'ai-agent.stream.done' || Boolean(payload.done)) {
       this.flushPendingUpdates()
       callbacks?.onUpdate?.(chunk, new Headers())
@@ -603,6 +612,8 @@ function normalizeStreamPayload(event: string, payload: unknown): AgentEvent {
   }
   const type = typeof data.type === 'string' ? data.type : event
   const message = data.message ? normalizeMessage(data.message) : undefined
+  const rawUIAction = data.uiAction ?? data.ui_action ?? data.uiActionJson ?? data.ui_action_json
+  const uiAction = parseUIAction(rawUIAction)
 
   return {
     type,
@@ -617,6 +628,33 @@ function normalizeStreamPayload(event: string, payload: unknown): AgentEvent {
     done: Boolean(data.done),
     message,
     agentSessionId: stringOrUndefined(data.agentSessionId ?? data.agent_session_id),
+    uiAction,
+  }
+}
+
+function parseUIAction(value: unknown): UIAction | undefined {
+  let candidate = value
+  if (typeof candidate === 'string') {
+    try { candidate = JSON.parse(candidate) } catch { return undefined }
+  }
+  const data = asRecord(candidate)
+  if (data.action !== 'navigate') {
+    return undefined
+  }
+  const target = asRecord(data.target)
+  const targetId = stringOrUndefined(target.targetId ?? target.target_id)
+  if (!targetId) {
+    return undefined
+  }
+  return {
+    action: 'navigate',
+    target: {
+      targetId,
+      module: target.module === 'system' || target.module === 'ai-agent' || target.module === 'func-operation' ? target.module : undefined,
+      viewKey: stringOrUndefined(target.viewKey ?? target.view_key),
+      sourceType: stringOrUndefined(target.sourceType ?? target.source_type),
+      sourceId: stringOrUndefined(target.sourceId ?? target.source_id),
+    },
   }
 }
 
