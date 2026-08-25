@@ -109,6 +109,8 @@ import { UserManagementWorkspace } from '../system/UserManagementWorkspace'
 import type { ConversationNotice } from './FunctionGenerationConsole'
 import { GeneratedAppPreviewCanvas } from './GeneratedAppPreviewCanvas'
 import type { PreviewErrorState } from './GeneratedAppPreviewCanvas'
+import { FunctionExecutionLogDrawer } from './FunctionExecutionLogDrawer'
+import { PreviewDebugLogFloat } from './PreviewDebugLogFloat'
 import { PublicConfigManagementWorkspace } from './PublicConfigManagementWorkspace'
 import { ExternalAPIManagementWorkspace } from './ExternalAPIManagementWorkspace'
 import { UploadKeyManagementWorkspace } from './UploadKeyManagementWorkspace'
@@ -266,6 +268,7 @@ export function FuncOperationWorkspace() {
   const [conversationSendTick, setConversationSendTick] = useState(0)
   const [previewError, setPreviewError] = useState<PreviewErrorState | null>(null)
   const [previewReloadToken, setPreviewReloadToken] = useState(0)
+  const [executionLogFunction, setExecutionLogFunction] = useState<OperationFunction | null>(null)
   const [generationPreviewReadyIds, setGenerationPreviewReadyIds] = useState<string[]>([])
   const [generationLaunchingIds, setGenerationLaunchingIds] = useState<string[]>([])
   const [conversationOutboundPending, setConversationOutboundPending] = useState(false)
@@ -1831,6 +1834,7 @@ export function FuncOperationWorkspace() {
                 )}
           </div>
         </section>
+        <FunctionExecutionLogDrawer functionItem={executionLogFunction} open={Boolean(executionLogFunction)} onClose={() => setExecutionLogFunction(null)} />
       </div>
     )
   }
@@ -1880,6 +1884,7 @@ export function FuncOperationWorkspace() {
                 <col className="func-admin-col-status" />
                 <col className="func-admin-col-page" />
                 <col className="func-admin-col-updated" />
+                <col className="func-admin-col-logs" />
                 <col className="func-admin-col-actions" />
               </colgroup>
               <thead>
@@ -1890,6 +1895,7 @@ export function FuncOperationWorkspace() {
                   <th>发布状态</th>
                   <th>功能页面</th>
                   <th>最近更新</th>
+                  <th>运行日志</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -1924,6 +1930,9 @@ export function FuncOperationWorkspace() {
                     </td>
                     <td className="func-admin-table-updated">
                       <span className="func-admin-table-value">{formatTime(item.updatedAt)}</span>
+                    </td>
+                    <td className="func-admin-table-logs">
+                      <Button type="link" disabled={!item.generatedAppId} onClick={() => setExecutionLogFunction(item)}>详情</Button>
                     </td>
                     <td className="func-admin-table-actions">
                       <div className="func-admin-table-action-group">
@@ -2359,7 +2368,8 @@ export function FuncOperationWorkspace() {
             </div>
           </div>
         ) : (
-          <GeneratedAppPreviewCanvas
+          <>
+            <GeneratedAppPreviewCanvas
             app={draftPreviewApp}
             enabled
             renderKey={previewRenderKey}
@@ -2372,7 +2382,9 @@ export function FuncOperationWorkspace() {
             onErrorChange={setPreviewError}
             onReload={() => setPreviewReloadToken((current) => current + 1)}
             onFixWithAI={() => handleFixPreviewWithAI(functionItem)}
-          />
+            />
+            <PreviewDebugLogFloat functionId={functionItem.id} functionName={functionItem.name} previewSessionKey={previewRenderKey} />
+          </>
         )}
       </div>
     )
@@ -2389,18 +2401,20 @@ export function FuncOperationWorkspace() {
             <Welcome title="还没有页面" description="当前功能还没有可渲染的前端代码，请先在管理后台完成生成并发布。" />
           </div>
         ) : (
-          <GeneratedAppPreviewCanvas
-            key={previewRenderKey}
-            app={previewApp}
-            enabled
-            renderKey={previewRenderKey}
-            functionId={functionItem.id}
-            className="preview-canvas func-preview-canvas published-runtime-canvas"
-            navTree={navTree}
-            runFunction={runFunction}
-            onErrorChange={setPreviewError}
-            onReload={() => void handleReloadPreviewApps(functionItem.generatedAppId)}
-          />
+          <>
+            <GeneratedAppPreviewCanvas
+              key={previewRenderKey}
+              app={previewApp}
+              enabled
+              renderKey={previewRenderKey}
+              functionId={functionItem.id}
+              className="preview-canvas func-preview-canvas published-runtime-canvas"
+              navTree={navTree}
+              runFunction={runFunction}
+              onErrorChange={setPreviewError}
+              onReload={() => void handleReloadPreviewApps(functionItem.generatedAppId)}
+            />
+          </>
         )}
       </section>
     )
