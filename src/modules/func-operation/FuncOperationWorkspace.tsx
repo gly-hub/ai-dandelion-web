@@ -110,6 +110,7 @@ import type { ConversationNotice } from './FunctionGenerationConsole'
 import { GeneratedAppPreviewCanvas } from './GeneratedAppPreviewCanvas'
 import type { PreviewErrorState } from './GeneratedAppPreviewCanvas'
 import { FunctionExecutionLogDrawer } from './FunctionExecutionLogDrawer'
+import { PreviewDebugLogFloat } from './PreviewDebugLogFloat'
 import { PublicConfigManagementWorkspace } from './PublicConfigManagementWorkspace'
 import { ExternalAPIManagementWorkspace } from './ExternalAPIManagementWorkspace'
 import { UploadKeyManagementWorkspace } from './UploadKeyManagementWorkspace'
@@ -2367,7 +2368,8 @@ export function FuncOperationWorkspace() {
             </div>
           </div>
         ) : (
-          <GeneratedAppPreviewCanvas
+          <>
+            <GeneratedAppPreviewCanvas
             app={draftPreviewApp}
             enabled
             renderKey={previewRenderKey}
@@ -2380,7 +2382,9 @@ export function FuncOperationWorkspace() {
             onErrorChange={setPreviewError}
             onReload={() => setPreviewReloadToken((current) => current + 1)}
             onFixWithAI={() => handleFixPreviewWithAI(functionItem)}
-          />
+            />
+            <PreviewDebugLogFloat functionId={functionItem.id} functionName={functionItem.name} previewSessionKey={previewRenderKey} />
+          </>
         )}
       </div>
     )
