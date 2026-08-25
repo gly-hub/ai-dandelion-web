@@ -247,6 +247,12 @@ export function GeneratedAppPreviewCanvas({
     onErrorChangeRef.current?.(next)
   }, [])
 
+  const handleManualRefresh = useCallback(() => {
+    setReloadSeed((current) => current + 1)
+    reportError(null)
+    onReload?.()
+  }, [onReload, reportError])
+
   useEffect(() => {
     runFunctionRef.current = runFunction
   }, [runFunction])
@@ -434,12 +440,6 @@ export function GeneratedAppPreviewCanvas({
       window.removeEventListener('message', onMessage)
     }
   }, [appSnapshot, enabled, permissions, renderKey, reloadSeed, reportError])
-
-  function handleManualRefresh() {
-    setReloadSeed((current) => current + 1)
-    reportError(null)
-    onReload?.()
-  }
 
   if (!app) {
     return (
