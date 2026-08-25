@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { TabNavigationProvider } from './contexts/TabNavigationContext'
 import { NavMenuProvider, useNavMenus } from './contexts/NavMenuContext'
 import { LoginPage } from './modules/system/LoginPage'
+import { SystemWorkspace } from './modules/system/SystemWorkspace'
 import { AiAgentWorkspace } from './modules/ai-agent/AiAgentWorkspace'
 import { FuncOperationWorkspace } from './modules/func-operation/FuncOperationWorkspace'
 import {
@@ -17,11 +18,12 @@ import {
   stopRealtimeConnection,
   subscribeRealtimeConnectionStatus,
   subscribeRealtimeEvents,
+  subscribeAiAgentUIActions,
   type RealtimeConnectionStatus,
 } from './lib/aiAgentProvider'
 import { listSystemNotifications, normalizeSystemNotification, readSystemNotification } from './lib/systemApi'
-import type { SystemNotification } from './types'
-import { buildFuncAdminPath, buildFuncPublishedPath, getModuleFromPath, isFuncEditorImmersivePath, ROUTES } from './lib/routes'
+import type { SystemMenu, SystemNotification, UIAction } from './types'
+import { buildAiAgentPath, buildFuncAdminPath, buildFuncPublishedPath, buildSystemPath, getModuleFromPath, isFuncEditorImmersivePath, ROUTES } from './lib/routes'
 import './App.css'
 import './console-prototype.css'
 import './workspace-shell.css'
@@ -78,11 +80,38 @@ function ConsoleAppContent() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const handledNotificationIdsRef = useRef(new Set<string>())
   const handledNotificationEventsRef = useRef(new Set<string>())
+  const pendingUIActionRef = useRef<UIAction | null>(null)
   const [viewportSize, setViewportSize] = useState(() => getViewportSize())
   const closeAgentChat = useCallback(() => {
     disposeAllAiAgentSessionProviders()
     setChatMode(null)
   }, [])
+
+  const executeUIAction = useCallback((action: UIAction) => {
+    const target = resolveNavigationTarget(navTree, action)
+    if (!target) {
+      toastMessage.warning('Agent 请求的页面不可用或无权访问')
+      return
+    }
+    navigate(target)
+  }, [navigate, navTree, toastMessage])
+
+  useEffect(() => subscribeAiAgentUIActions((action) => {
+    if (loading) {
+      pendingUIActionRef.current = action
+      return
+    }
+    executeUIAction(action)
+  }), [executeUIAction, loading])
+
+  useEffect(() => {
+    if (loading || !pendingUIActionRef.current) {
+      return
+    }
+    const action = pendingUIActionRef.current
+    pendingUIActionRef.current = null
+    executeUIAction(action)
+  }, [executeUIAction, loading])
   const immersiveViewportStyle = useMemo<ImmersiveViewportStyle | undefined>(() => {
     if (!immersiveFuncEditor) {
       return undefined
@@ -468,6 +497,52 @@ type ImmersiveViewportStyle = CSSProperties & {
   '--immersive-viewport-height': string
 }
 
+function resolveNavigationTarget(navTree: SystemMenu[], action: UIAction): string | null {
+  if (!action.target.targetId) {
+    return null
+  }
+  const menu = findMenuById(navTree, action.target.targetId)
+  if (!menu || menu.menuType !== 2) {
+    return null
+  }
+  const module = menu.module || action.target.module
+  const viewKey = menu.viewKey || menu.code || action.target.viewKey || ''
+  const sourceType = menu.sourceType || action.target.sourceType || ''
+  const sourceId = menu.sourceId || action.target.sourceId || ''
+
+  if (module === 'system' && viewKey) {
+    return buildSystemPath(viewKey)
+  }
+  if (module === 'ai-agent') {
+    return buildAiAgentPath(viewKey || 'chat')
+  }
+  if (module === 'func-operation') {
+    if (sourceType === 'generated_function' && sourceId) {
+      return buildFuncPublishedPath(sourceId)
+    }
+    if (viewKey) {
+      return buildFuncAdminPath(viewKey)
+    }
+    return buildFuncPublishedPath()
+  }
+  return null
+}
+
+function findMenuById(menus: SystemMenu[], id: string): SystemMenu | null {
+  for (const menu of menus) {
+    if (menu.id === id) {
+      return menu
+    }
+    if (menu.children?.length) {
+      const nested = findMenuById(menu.children, id)
+      if (nested) {
+        return nested
+      }
+    }
+  }
+  return null
+}
+
 function getViewportSize() {
   if (typeof window === 'undefined') {
     return { width: 0, height: 0 }
@@ -525,7 +600,7 @@ function App() {
               }
             >
               <Route index element={<DefaultModuleRedirect />} />
-              <Route path="system/*" element={<Navigate to={buildFuncAdminPath('users')} replace />} />
+              <Route path="system/*" element={<SystemWorkspace />} />
               <Route path="ai-agent/*" element={<AiAgentWorkspace />} />
               <Route path="func-operation/*" element={<FuncOperationWorkspace />} />
             </Route>
