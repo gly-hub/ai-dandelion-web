@@ -3,6 +3,9 @@ import type {
   FunctionDocument,
   FunctionDataForm,
   FunctionReadiness,
+  FunctionExecutionLog,
+  FunctionExecutionLogEvent,
+  FunctionExecutionLogPage,
   GeneratedApp,
   GeneratedAppInvokeResult,
   OperationFunction,
@@ -469,50 +472,58 @@ export async function invokeGeneratedApp(
     errorMessage?: string
     stage?: string
     hint?: string
+	    executionLogId?: string
   }>(`/func-operation/generated-apps/${appId}/invoke`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ payload: payload || {} }),
   })
 
-  const errorCode = stringValue(data.errorCode)
-  if (errorCode) {
-    throw new GeneratedAppInvokeError(stringValue(data.errorMessage) || '功能运行失败', {
-      errorCode,
-      stage: stringValue(data.stage),
-      hint: stringValue(data.hint),
-    })
-  }
-
-  return {
-    appId: stringValue(data.appId),
-    version: stringValue(data.version),
-    export: stringValue(data.export),
-    result: numberValue(data.result),
-    response: parseMaybeJSON(data.response),
-    duration: stringValue(data.duration),
-    runtime: stringValue(data.runtime),
-    moduleLen: numberValue(data.moduleLen),
-    backendSource: stringValue(data.backendSource),
-    backendModule: stringValue(data.backendModule),
-  }
+	return normalizeGeneratedAppInvokeResult(data)
 }
 
 export async function invokeFunctionPreview(functionId: string, payload?: unknown): Promise<GeneratedAppInvokeResult> {
   const data = await requestJSON<{
     appId?: string; version?: string; export?: string; result?: number; response?: string; duration?: string
-    runtime?: string; moduleLen?: number; backendSource?: string; backendModule?: string
+	    runtime?: string; moduleLen?: number; backendSource?: string; backendModule?: string
+	    errorCode?: string; errorMessage?: string; stage?: string; hint?: string; executionLogId?: string
   }>(`/func-operation/functions/${functionId}/preview/invoke`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ payload: payload || {} }),
   })
+	return normalizeGeneratedAppInvokeResult(data)
+}
+
+export async function listFunctionExecutionLogs(functionId: string, options: {
+  limit?: number
+  page?: number
+  query?: string
+	requestId?: string
+  status?: string
+  invocationType?: string
+  startTime?: number
+  endTime?: number
+} = {}): Promise<FunctionExecutionLogPage> {
+  const params = new URLSearchParams()
+  params.set('limit', String(Math.min(Math.max(options.limit || 20, 1), 100)))
+  params.set('page', String(Math.max(options.page || 1, 1)))
+  if (options.query?.trim()) params.set('query', options.query.trim())
+	if (options.requestId?.trim()) params.set('requestId', options.requestId.trim())
+  if (options.status) params.set('status', options.status)
+  if (options.invocationType) params.set('invocationType', options.invocationType)
+  if (options.startTime) params.set('startTime', String(options.startTime))
+  if (options.endTime) params.set('endTime', String(options.endTime))
+  const data = await requestJSON<{ logs?: unknown[]; total?: unknown }>(`/func-operation/functions/${encodeURIComponent(functionId)}/execution-logs?${params.toString()}`)
   return {
-    appId: stringValue(data.appId), version: stringValue(data.version), export: stringValue(data.export),
-    result: numberValue(data.result), response: parseMaybeJSON(data.response), duration: stringValue(data.duration),
-    runtime: stringValue(data.runtime), moduleLen: numberValue(data.moduleLen),
-    backendSource: stringValue(data.backendSource), backendModule: stringValue(data.backendModule),
+    logs: Array.isArray(data.logs) ? data.logs.map(normalizeFunctionExecutionLog) : [],
+    total: numberValue(data.total),
   }
+}
+
+export async function getFunctionExecutionLog(functionId: string, logId: string): Promise<FunctionExecutionLog> {
+  const data = await requestJSON<{ log?: unknown }>(`/func-operation/functions/${encodeURIComponent(functionId)}/execution-logs/${encodeURIComponent(logId)}`)
+  return normalizeFunctionExecutionLog(data.log)
 }
 
 export function unwrapGeneratedAppInvokeData(result: GeneratedAppInvokeResult): unknown {
@@ -693,6 +704,44 @@ function normalizeGeneratedApp(raw: unknown): GeneratedApp {
     createdAt: numberValue(data.createdAt ?? data.created_at),
     updatedAt: numberValue(data.updatedAt ?? data.updated_at),
   }
+}
+
+function normalizeGeneratedAppInvokeResult(raw: Record<string, unknown>): GeneratedAppInvokeResult {
+	const errorCode = stringValue(raw.errorCode ?? raw.error_code)
+	if (errorCode) {
+		throw new GeneratedAppInvokeError(stringValue(raw.errorMessage ?? raw.error_message) || '功能运行失败', {
+			errorCode,
+			stage: stringValue(raw.stage),
+			hint: stringValue(raw.hint),
+		})
+	}
+	return {
+		appId: stringValue(raw.appId ?? raw.app_id),
+		version: stringValue(raw.version),
+		export: stringValue(raw.export),
+		result: numberValue(raw.result),
+		response: parseMaybeJSON(raw.response),
+		duration: stringValue(raw.duration),
+		runtime: stringValue(raw.runtime),
+		moduleLen: numberValue(raw.moduleLen ?? raw.module_len),
+		backendSource: stringValue(raw.backendSource ?? raw.backend_source),
+		backendModule: stringValue(raw.backendModule ?? raw.backend_module),
+		executionLogId: stringValue(raw.executionLogId ?? raw.execution_log_id),
+	}
+}
+
+function normalizeFunctionExecutionLog(raw: unknown): FunctionExecutionLog {
+	const data = asRecord(raw)
+	const events = Array.isArray(data.logs) ? data.logs.map((item): FunctionExecutionLogEvent => {
+		const event = asRecord(item)
+		return { stream: stringValue(event.stream), content: stringValue(event.content), timestamp: numberValue(event.timestamp) }
+	}) : []
+	return {
+		id: stringValue(data.id), functionId: stringValue(data.functionId ?? data.function_id), appId: stringValue(data.appId ?? data.app_id), userId: stringValue(data.userId ?? data.user_id), requestId: stringValue(data.requestId ?? data.request_id),
+		invocationType: stringValue(data.invocationType ?? data.invocation_type), version: stringValue(data.version), status: stringValue(data.status), stage: stringValue(data.stage),
+		errorCode: stringValue(data.errorCode ?? data.error_code), errorMessage: stringValue(data.errorMessage ?? data.error_message), inputJson: stringValue(data.inputJson ?? data.input_json), outputJson: stringValue(data.outputJson ?? data.output_json),
+		logs: events, logsTruncated: Boolean(data.logsTruncated ?? data.logs_truncated), durationMs: numberValue(data.durationMs ?? data.duration_ms), createdAt: numberValue(data.createdAt ?? data.created_at),
+	}
 }
 
 function stringValue(value: unknown): string {
