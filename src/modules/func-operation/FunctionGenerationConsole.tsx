@@ -1,9 +1,13 @@
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
 import { Alert, Button, Spin, Tag } from 'antd'
-import { Bubble, Sender, Welcome } from '@ant-design/x'
+import { Attachments, Bubble, Sender, Welcome } from '@ant-design/x'
+import { InboxOutlined, PaperClipOutlined } from '@ant-design/icons'
 import { MessageBubble } from '../../components/MessageBubble'
 import { buildBubbleItemKey } from '../../lib/chatBubble'
-import type { AgentModelOption, ChatMessage, ChatStatus } from '../../types'
+import { uploadChatFile } from '../../lib/api'
+import { getClipboardImageFile } from '../../lib/clipboardAttachment'
+import type { AgentModelOption, ChatMessage, ChatStatus, MessagePart } from '../../types'
+import type { ChatInput } from '../../lib/aiAgentProvider'
 
 type EditorConversation = 'product' | 'technical' | 'generation'
 type EditorStep = 'product' | 'technical' | 'code' | 'preview'
@@ -52,8 +56,26 @@ interface FunctionGenerationConsoleProps {
   outboundPending?: boolean
   modelOptions?: AgentModelOption[]
   selectedModelId?: string
-  onRequest: (params: { content: string }) => void
+  onRequest: (params: ChatInput) => void
   onAbort: () => void
+}
+
+interface PendingGenerationAttachment {
+  uid: string
+  fileUuid?: string
+  name: string
+  size: number
+  type: string
+  url?: string
+  thumbUrl?: string
+  percent: number
+  status: 'uploading' | 'done'
+}
+
+function revokeAttachmentPreview(attachment: PendingGenerationAttachment) {
+  if (attachment.url?.startsWith('blob:')) {
+    URL.revokeObjectURL(attachment.url)
+  }
 }
 
 const GenerationConsoleMessages = memo(function GenerationConsoleMessages({
@@ -128,36 +150,181 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
   placeholder: string
   conversationKey: string
   selectedModel: AgentModelOption | null
-  onRequest: (params: { content: string }) => void
+  onRequest: (params: ChatInput) => void
   onAbort: () => void
 }) {
   const [draft, setDraft] = useState('')
+  const [attachments, setAttachments] = useState<MessagePart[]>([])
+  const [pendingAttachments, setPendingAttachments] = useState<PendingGenerationAttachment[]>([])
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const pendingAttachmentsRef = useRef<PendingGenerationAttachment[]>([])
+  const uploadSeedRef = useRef(0)
+  const dropContainerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments
+  }, [pendingAttachments])
 
   useEffect(() => {
     setDraft('')
+    pendingAttachmentsRef.current.forEach(revokeAttachmentPreview)
+    pendingAttachmentsRef.current = []
+    setPendingAttachments([])
+    setAttachments([])
   }, [conversationKey])
 
+  useEffect(() => () => {
+    pendingAttachmentsRef.current.forEach(revokeAttachmentPreview)
+  }, [])
+
+  async function handleAttachmentUpload(file: File) {
+    if (file.size > 16 * 1024 * 1024) {
+      setUploadError('聊天附件最大支持 16 MiB')
+      return false
+    }
+    const isImage = file.type.startsWith('image/')
+    const uid = `generation-upload-${Date.now()}-${uploadSeedRef.current++}`
+    const localPreviewURL = isImage ? URL.createObjectURL(file) : undefined
+    setPendingAttachments((current) => [...current, {
+      uid,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      url: localPreviewURL,
+      thumbUrl: localPreviewURL,
+      percent: 0,
+      status: 'uploading',
+    }])
+    setUploadError('')
+    setUploadingAttachment(true)
+    try {
+      const uploaded = await uploadChatFile(file, (percent) => {
+        setPendingAttachments((current) => current.map((attachment) => (
+          attachment.uid === uid
+            ? { ...attachment, percent: Math.max(attachment.percent, percent) }
+            : attachment
+        )))
+      })
+      const fileUrl = uploaded.url
+      if (!fileUrl) {
+        throw new Error('附件预览地址缺失')
+      }
+      const type: Extract<MessagePart, { fileUuid: string }>['type'] = uploaded.contentType.startsWith('image/')
+        ? 'image'
+        : uploaded.contentType === 'application/pdf' ? 'document' : 'file'
+      setAttachments((current) => [...current, {
+        type,
+        fileUuid: uploaded.uuid,
+        fileName: file.name,
+        contentType: uploaded.contentType,
+        fileSize: file.size,
+        md5: uploaded.md5 || '',
+        fileUrl,
+      }])
+      setPendingAttachments((current) => current.map((attachment) => (
+        attachment.uid === uid
+          ? { ...attachment, fileUuid: uploaded.uuid, percent: 100, status: 'done' }
+          : attachment
+      )))
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '附件上传失败')
+      setPendingAttachments((current) => current.filter((attachment) => attachment.uid !== uid))
+      if (localPreviewURL) {
+        URL.revokeObjectURL(localPreviewURL)
+      }
+    } finally {
+      setUploadingAttachment(false)
+    }
+    return false
+  }
+
+  function removeAttachment(uid: string) {
+    const attachment = pendingAttachments.find((item) => item.uid === uid)
+    if (!attachment) {
+      return
+    }
+    revokeAttachmentPreview(attachment)
+    setPendingAttachments((current) => current.filter((item) => item.uid !== uid))
+    if (attachment.fileUuid) {
+      setAttachments((current) => current.filter((part) => !('fileUuid' in part) || part.fileUuid !== attachment.fileUuid))
+    }
+  }
+
+  function clearAttachments() {
+    pendingAttachments.forEach(revokeAttachmentPreview)
+    pendingAttachmentsRef.current = []
+    setPendingAttachments([])
+    setAttachments([])
+    setUploadError('')
+  }
+
+  function handleComposerPaste(event: ClipboardEvent<HTMLDivElement>) {
+    const file = getClipboardImageFile(event.clipboardData)
+    if (!file || disabled || loading || uploadingAttachment) {
+      return
+    }
+    event.preventDefault()
+    void handleAttachmentUpload(file)
+  }
+
   return (
-    <Sender
-      value={draft}
-      onChange={setDraft}
-      loading={loading}
-      disabled={disabled}
-      onCancel={onAbort}
-      onSubmit={(value) => {
-        const content = String(value).trim()
-        if (!content) {
-          return
-        }
-        setDraft('')
-        onRequest({ content })
-      }}
-      placeholder={placeholder}
-      autoSize={{ minRows: 3, maxRows: 8 }}
-      className="chat-sender"
-      suffix={false}
-      footer={(actions) => (
-        <div className="chat-sender-toolbar generation-console-toolbar">
+    <div ref={dropContainerRef} className="generation-composer-shell" onPaste={handleComposerPaste}>
+      <Sender
+        value={draft}
+        onChange={setDraft}
+        loading={loading}
+        disabled={disabled || uploadingAttachment}
+        onCancel={onAbort}
+        onSubmit={(value) => {
+          const content = String(value).trim()
+          if (!content && attachments.length === 0) {
+            return
+          }
+          setDraft('')
+          onRequest({ content, messageParts: attachments })
+          clearAttachments()
+        }}
+        placeholder={placeholder}
+        autoSize={{ minRows: 3, maxRows: 8 }}
+        className="chat-sender"
+        suffix={false}
+        header={pendingAttachments.length > 0 || uploadError ? (
+        <>
+          {pendingAttachments.length > 0 ? (
+            <Attachments
+              items={pendingAttachments}
+              maxCount={pendingAttachments.length}
+              onRemove={(file) => removeAttachment(String(file.uid))}
+              disabled={disabled || uploadingAttachment}
+              rootClassName="generation-attachment-list"
+            />
+          ) : null}
+          {uploadError ? <div className="generation-attachment-error" role="alert">{uploadError}</div> : null}
+        </>
+        ) : null}
+        footer={(actions) => (
+          <div className="chat-sender-toolbar generation-console-toolbar">
+          <Attachments
+            rootClassName="generation-attachment-uploader"
+            beforeUpload={handleAttachmentUpload}
+            disabled={disabled || loading || uploadingAttachment}
+            getDropContainer={() => dropContainerRef.current}
+            placeholder={{
+              icon: <InboxOutlined />,
+              title: '释放文件即可添加',
+              description: '最大 16 MiB',
+            }}
+          >
+            <button
+              type="button"
+              className="chat-attachment-trigger"
+              aria-label="添加附件"
+              title="添加附件"
+            >
+              <PaperClipOutlined />
+            </button>
+          </Attachments>
           {selectedModel ? (
             <div className="generation-console-model-pill" title={selectedModel.model || selectedModel.name}>
               <span>模型</span>
@@ -165,9 +332,10 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
             </div>
           ) : <span />}
           <div className="chat-sender-toolbar-actions">{actions}</div>
-        </div>
-      )}
-    />
+          </div>
+        )}
+      />
+    </div>
   )
 })
 
