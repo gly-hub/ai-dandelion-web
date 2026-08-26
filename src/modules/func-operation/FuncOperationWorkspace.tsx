@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ConsoleTabBar } from '../../components/ConsoleTabBar'
 import { ModuleSidebarNav } from '../../components/ModuleSidebarNav'
@@ -71,10 +71,14 @@ import {
 import { listMessages } from '../../lib/api'
 import { MAX_LIVE_CHAT_MESSAGES, releaseChatStore, releaseChatStoresByPrefix } from '../../lib/chatSession'
 import {
-  createAiAgentProvider,
   createChatMessage,
+  disposeAiAgentSessionProvider,
+  getAiAgentSessionProvider,
   normalizePersistedMessage,
+  releaseAiAgentSessionProviderReference,
+  retainAiAgentSessionProvider,
   ensureRealtimeConnection,
+  subscribeAiAgentSessionProviderSettled,
   subscribeRealtimeEvents,
   type ChatInput,
 } from '../../lib/aiAgentProvider'
@@ -123,19 +127,15 @@ import {
   hasGeneratedPage,
   resolveFunctionReadiness,
   resolveStepPrimaryAction,
-  shouldShowRefreshAndPreview,
 } from './functionReadiness'
 import type { FunctionNextAction } from '../../types'
 import {
-  buildDocumentFailedTag,
+  buildContinueTag,
   buildDocumentReadyTag,
-  buildGeneratedAppFailedTag,
   buildGeneratedAppReadyTag,
-  extractConversationFailureMessage,
-  extractDocumentFailedTag,
   extractDocumentReadyTag,
-  extractGeneratedAppFailedFunctionId,
   extractGeneratedAppReadyFunctionId,
+  conversationTurnNeedsContinue,
   conversationTurnHasOutcomeTag,
   findLatestTurnAssistantMessage,
 } from './funcOperationTags'
@@ -146,6 +146,10 @@ type EditorConversation = 'product' | 'technical' | 'generation'
 type EditorStep = 'product' | 'technical' | 'code' | 'preview'
 type DocSourceTab = 'applied' | 'draft'
 type PlanningDocType = 'product' | 'technical'
+type FunctionChatSession = {
+  chatKey: string
+  provider: ReturnType<typeof getAiAgentSessionProvider>
+}
 
 const systemAdminViewComponents: Record<string, () => ReactNode> = {
   'public-configs': () => <PublicConfigManagementWorkspace />,
@@ -281,8 +285,6 @@ export function FuncOperationWorkspace() {
   const [form] = Form.useForm<{ name: string; description: string; menuParentId?: string }>()
   const handledReadyTagsRef = useRef<Set<string>>(new Set())
   const handledDocumentReadyTagsRef = useRef<Set<string>>(new Set())
-  const handledDocumentFailedTagsRef = useRef<Set<string>>(new Set())
-  const handledGeneratedAppFailedTagsRef = useRef<Set<string>>(new Set())
   const handledContinuePromptsRef = useRef<Set<string>>(new Set())
   const handledReleaseEventsRef = useRef<Set<string>>(new Set())
   const loadedDraftKeyRef = useRef('')
@@ -297,7 +299,22 @@ export function FuncOperationWorkspace() {
   const previewPreparingRef = useRef(false)
   const onRequestRef = useRef<(params: ChatInput) => void>(() => {})
   const draftDocumentsRef = useRef<Partial<Record<PlanningDocType, FunctionDocument>>>({})
+  const functionChatSessionsRef = useRef<Map<string, Map<string, FunctionChatSession>>>(new Map())
+  const editorFunctionIdRef = useRef('')
   draftDocumentsRef.current = draftDocuments
+
+  const stopFunctionEditorStreams = useCallback((functionId: string) => {
+    if (!functionId) {
+      return
+    }
+    const sessions = functionChatSessionsRef.current.get(functionId)
+    sessions?.forEach(({ chatKey }, sessionId) => {
+      disposeAiAgentSessionProvider(sessionId)
+      releaseChatStore(chatKey)
+    })
+    functionChatSessionsRef.current.delete(functionId)
+    releaseChatStoresByPrefix(`${functionId}:`)
+  }, [])
 
   useEffect(() => {
     sessionConfigsRef.current = sessionConfigs
@@ -429,7 +446,7 @@ export function FuncOperationWorkspace() {
   const provider = useMemo(
     () =>
       activeSessionId
-        ? createAiAgentProvider(activeSessionId, () =>
+        ? getAiAgentSessionProvider(activeSessionId, () =>
           resolveFunctionConversationModelId(
             sessionConfigsRef.current,
             resolvedEditorConversation,
@@ -443,6 +460,29 @@ export function FuncOperationWorkspace() {
         : undefined,
     [activeSessionId, resolvedEditorConversation],
   )
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+    retainAiAgentSessionProvider(activeSessionId)
+    return () => releaseAiAgentSessionProviderReference(activeSessionId)
+  }, [activeSessionId])
+
+  useEffect(() => subscribeAiAgentSessionProviderSettled((sessionId) => {
+    functionChatSessionsRef.current.forEach((sessions, functionId) => {
+      const session = sessions.get(sessionId)
+      if (!session) {
+        return
+      }
+      disposeAiAgentSessionProvider(sessionId)
+      releaseChatStore(session.chatKey)
+      sessions.delete(sessionId)
+      if (sessions.size === 0) {
+        functionChatSessionsRef.current.delete(functionId)
+      }
+    })
+  }), [])
 
   const {
     messages,
@@ -524,16 +564,45 @@ export function FuncOperationWorkspace() {
   }, [location.pathname, route.adminViewKey, route.functionId, route.isEditor, route.mode, route.step])
 
   useEffect(() => {
+    const nextEditorFunctionId = route.mode === 'admin' && route.isEditor ? route.functionId || '' : ''
+    const previousEditorFunctionId = editorFunctionIdRef.current
+    if (previousEditorFunctionId && !nextEditorFunctionId) {
+      stopFunctionEditorStreams(previousEditorFunctionId)
+    }
+    editorFunctionIdRef.current = nextEditorFunctionId
+  }, [route.functionId, route.isEditor, route.mode, stopFunctionEditorStreams])
+
+  useEffect(() => {
     const chatKey = activeChatKey
     const chatProvider = provider
-    if (!chatKey) {
+    const sessionId = activeSessionId
+    const functionId = activeAdminFunction?.id
+    if (!chatKey || !chatProvider || !sessionId || !functionId) {
       return
     }
-    return () => {
-      chatProvider?.request.abort()
-      releaseChatStore(chatKey)
+    let sessions = functionChatSessionsRef.current.get(functionId)
+    if (!sessions) {
+      sessions = new Map()
+      functionChatSessionsRef.current.set(functionId, sessions)
     }
-  }, [activeChatKey, provider])
+    sessions.set(sessionId, { chatKey, provider: chatProvider })
+    return () => {
+      // Switching between editor steps must not interrupt a running stream.
+      if (chatProvider.request.isRequesting) {
+        return
+      }
+      disposeAiAgentSessionProvider(sessionId)
+      releaseChatStore(chatKey)
+      const currentSessions = functionChatSessionsRef.current.get(functionId)
+      if (!currentSessions?.get(sessionId) || currentSessions.get(sessionId)?.provider !== chatProvider) {
+        return
+      }
+      currentSessions.delete(sessionId)
+      if (currentSessions.size === 0) {
+        functionChatSessionsRef.current.delete(functionId)
+      }
+    }
+  }, [activeAdminFunction?.id, activeChatKey, activeSessionId, provider])
 
   useEffect(() => {
     if (isRequesting || messages.length <= MAX_LIVE_CHAT_MESSAGES) {
@@ -553,8 +622,6 @@ export function FuncOperationWorkspace() {
     flushedConversationSendTokenRef.current = 0
     handledReadyTagsRef.current.clear()
     handledDocumentReadyTagsRef.current.clear()
-    handledDocumentFailedTagsRef.current.clear()
-    handledGeneratedAppFailedTagsRef.current.clear()
     handledContinuePromptsRef.current.clear()
     setConversationOutboundPending(false)
     setGenerationLaunchingIds([])
@@ -633,10 +700,7 @@ export function FuncOperationWorkspace() {
     }
   }
 
-  function resetEditorSessionCache(functionId?: string) {
-    if (functionId) {
-      releaseChatStoresByPrefix(`${functionId}:`)
-    }
+  function resetEditorSessionCache() {
     setDraftDocuments({})
     setCodeState(null)
     setDraftLoadingKey('')
@@ -654,13 +718,15 @@ export function FuncOperationWorkspace() {
   }
 
   function leaveEditor() {
-    resetEditorSessionCache(activeAdminId)
+    stopFunctionEditorStreams(activeAdminId)
+    resetEditorSessionCache()
     navigate(buildFuncAdminPath())
     void reloadFunctions()
   }
 
   function exitToPublished() {
-    resetEditorSessionCache(activeAdminId)
+    stopFunctionEditorStreams(activeAdminId)
+    resetEditorSessionCache()
     navigate(buildFuncPublishedPath())
     setActiveUserNavViewKey(pickFuncUserDefaultViewKey(funcNavMenus))
     void reloadFunctions()
@@ -699,7 +765,7 @@ export function FuncOperationWorkspace() {
         menuParentId: String(values.menuParentId ?? '').trim(),
       })
       setFunctions((current) => [next, ...current])
-      resetEditorSessionCache(activeAdminId)
+      resetEditorSessionCache()
       setEditorSessionNonce((current) => current + 1)
       setActiveAdminId(next.id)
       setEditorConversation('product')
@@ -1244,14 +1310,15 @@ export function FuncOperationWorkspace() {
   }
 
   function openAdminHome() {
-    resetEditorSessionCache(activeAdminId)
+    stopFunctionEditorStreams(activeAdminId)
+    resetEditorSessionCache()
     setActiveAdminNavViewKey(pickFuncAdminDefaultViewKey(funcNavMenus))
     navigate(buildFuncAdminPath())
     void reloadFunctions()
   }
 
   async function openEditor(id: string) {
-    resetEditorSessionCache(activeAdminId)
+    resetEditorSessionCache()
     setEditorSessionNonce((current) => current + 1)
     setActiveAdminId(id)
     navigate(buildFuncEditorPath(id))
@@ -1537,30 +1604,10 @@ export function FuncOperationWorkspace() {
         return
       }
 
-      const failedFunctionId = extractGeneratedAppFailedFunctionId(latestAssistant.message.content)
-      const failedTagKey = `${latestAssistant.id}:${failedFunctionId}`
-      if (
-        failedFunctionId &&
-        failedFunctionId === activeAdminFunction?.id &&
-        !handledGeneratedAppFailedTagsRef.current.has(failedTagKey)
-      ) {
-        handledGeneratedAppFailedTagsRef.current.add(failedTagKey)
-        setConversationNotice({
-          conversation: 'generation',
-          type: 'error',
-          message: extractConversationFailureMessage(
-            latestAssistant.message.content,
-            '页面生成未完成，请查看下方回复中的阻塞原因。',
-          ),
-        })
-        return
-      }
-
       if (shouldPromptContinueConversation(
         activeAdminFunction,
         'generation',
         latestAssistant.message.content,
-        generationPreviewReadyIds,
         openedGenerationIds,
       )) {
         const continueKey = `${latestAssistant.id}:${activeAdminFunction?.id}:generation`
@@ -1607,34 +1654,12 @@ export function FuncOperationWorkspace() {
       }
     }
 
-    const failed = extractDocumentFailedTag(latestAssistant.message.content)
-    if (failed && failed.functionId === activeAdminFunction?.id) {
-      const conversationMatches = (failed.docType === 'product' && editorConversation === 'product')
-        || (failed.docType === 'technical' && editorConversation === 'technical')
-      const stepMatches = editorStep === failed.docType
-      if (conversationMatches || stepMatches) {
-        const tagKey = `${latestAssistant.id}:${failed.functionId}:${failed.docType}`
-        if (!handledDocumentFailedTagsRef.current.has(tagKey)) {
-          handledDocumentFailedTagsRef.current.add(tagKey)
-          setConversationNotice({
-            conversation: failed.docType,
-            type: 'error',
-            message: extractConversationFailureMessage(
-              latestAssistant.message.content,
-              `文档生成失败：${failed.docType === 'product' ? '产品文档' : '研发文档'}阶段未完成，请查看下方回复中的阻塞原因。`,
-            ),
-          })
-        }
-      }
-    }
-
     if (
       (editorConversation === 'product' || editorConversation === 'technical')
       && shouldPromptContinueConversation(
         activeAdminFunction,
         editorConversation,
         latestAssistant.message.content,
-        generationPreviewReadyIds,
         openedGenerationIds,
       )
     ) {
@@ -1659,7 +1684,6 @@ export function FuncOperationWorkspace() {
     activeAdminFunction?.id,
     activeAdminFunction?.workflowStage,
     functions,
-    generationPreviewReadyIds,
     openedGenerationIds,
   ])
 
@@ -2585,7 +2609,6 @@ function shouldPromptContinueConversation(
   functionItem: OperationFunction | null | undefined,
   conversation: EditorConversation,
   content: string,
-  generationPreviewReadyIds: string[],
   openedGenerationIds: string[],
 ): boolean {
   if (!functionItem) {
@@ -2594,17 +2617,27 @@ function shouldPromptContinueConversation(
   if (conversationTurnHasOutcomeTag(content, functionItem.id, conversation)) {
     return false
   }
-  if (conversation === 'generation') {
-    if (shouldShowRefreshAndPreview(functionItem, generationPreviewReadyIds)) {
-      return false
-    }
-    if (functionItem.workflowStage === FUNCTION_WORKFLOW_STAGE.codeGenerated) {
-      return false
-    }
-    return functionItem.workflowStage === FUNCTION_WORKFLOW_STAGE.codeGeneration
-      || openedGenerationIds.includes(functionItem.id)
+  if (conversationTurnNeedsContinue(content, functionItem.id, conversation)) {
+    return true
   }
-  return true
+  if (conversation !== 'generation' || isWaitingForUserInput(content)) {
+    return false
+  }
+  // A hard stop can happen before the model emits its pending-continuation tag.
+  // Keep code generation recoverable while the workflow still marks it as unfinished.
+  return functionItem.workflowStage === FUNCTION_WORKFLOW_STAGE.codeGeneration
+    || openedGenerationIds.includes(functionItem.id)
+}
+
+function isWaitingForUserInput(content: string) {
+  const normalized = content.trim()
+  if (!normalized) {
+    return false
+  }
+  if (/[?？]\s*$/.test(normalized)) {
+    return true
+  }
+  return /(?:请|需要|麻烦).{0,16}(?:补充|确认|提供|选择|回复|说明|告知)/.test(normalized)
 }
 
 function getPlanningStepHint(step: EditorStep, functionItem: OperationFunction) {
@@ -2724,9 +2757,9 @@ function buildProductDocPrompt(functionItem: OperationFunction, publicConfigs: P
     `功能描述：${description}`,
     `draft 文件：${getDraftDocumentPath(functionItem, 'product')}`,
     `完成标签：${buildDocumentReadyTag(functionItem.id, 'product')}`,
-    `失败标签：${buildDocumentFailedTag(functionItem.id, 'product')}`,
+    `待继续标签：${buildContinueTag(functionItem.id, 'product')}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
-    '要求：完成标签和失败标签只能写在对话回复最后一行，禁止写入 draft 文档正文。',
+    '要求：成功完成并写入 draft 后，在对话回复最后一行输出完成标签；本轮因轮数、时间或执行边界结束且仍需 AI 下一轮继续时，在最后一行输出待继续标签；等待用户补充信息时不输出任何标签。所有标签禁止写入 draft 文档正文。',
   ].join('\n')
 }
 
@@ -2738,9 +2771,9 @@ function buildTechnicalDocPrompt(functionItem: OperationFunction, publicConfigs:
     `产品文档（applied）：${productDocPath}`,
     `draft 文件：${getDraftDocumentPath(functionItem, 'technical')}`,
     `完成标签：${buildDocumentReadyTag(functionItem.id, 'technical')}`,
-    `失败标签：${buildDocumentFailedTag(functionItem.id, 'technical')}`,
+    `待继续标签：${buildContinueTag(functionItem.id, 'technical')}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
-    '要求：完成标签和失败标签只能写在对话回复最后一行，禁止写入 draft 文档正文。',
+    '要求：成功完成并写入 draft 后，在对话回复最后一行输出完成标签；本轮因轮数、时间或执行边界结束且仍需 AI 下一轮继续时，在最后一行输出待继续标签；等待用户补充信息时不输出任何标签。所有标签禁止写入 draft 文档正文。',
   ].join('\n')
 }
 
@@ -2759,13 +2792,13 @@ function buildGeneratedAppBuilderPrompt(functionItem: OperationFunction, app: Ge
     `appDir：${appFolder}`,
     `tablePrefix：${tablePrefix}`,
     `完成标签：${buildGeneratedAppReadyTag(functionItem.id)}`,
-    `失败标签：${buildGeneratedAppFailedTag(functionItem.id)}`,
+    `待继续标签：${buildContinueTag(functionItem.id, 'generation')}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
     '按钮权限要求：manifest.actions 必须包含所有会触发新增、编辑、删除、归档、分配、审批、保存等状态变更的 action；列表、详情、查询等只读 action 不写入 manifest.actions。',
     '按钮展示要求：所有会触发 manifest.actions 中 action 的按钮、菜单项、弹窗按钮、详情页按钮、子模块按钮，都必须在渲染前调用 `context.can(actionKey)` 或透传后的同等 can 方法判断；无权限时不要渲染按钮。',
     '嵌套界面要求：如果按钮在 modal、drawer、tab、子表格、详情面板等内部组件里，必须把 can 方法从 render(context) 一路透传进去，禁止只在外层列表做权限判断。',
     '提交自检：不得出现 “Permission checks removed”、用 `canManage = true` 放开受控按钮、`!can || can(action)` 这类默认放开受控按钮的写法；后端仍会兜底鉴权，但前端必须隐藏无权限按钮。未受控的只读入口可以默认展示。',
-    '要求：完成标签和失败标签只能写在对话回复最后一行，禁止写入文档或代码文件。',
+    '要求：成功完成并通过自检后，在对话回复最后一行输出完成标签；本轮因轮数、时间或执行边界结束且仍需 AI 下一轮继续时，在最后一行输出待继续标签；等待用户补充信息时不输出任何标签。所有标签禁止写入文档或代码文件。',
   ].join('\n')
 }
 

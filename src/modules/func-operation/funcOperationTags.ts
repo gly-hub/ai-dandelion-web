@@ -1,41 +1,35 @@
 export const DOCUMENT_READY_TAG_NAME = 'func-operation-document-ready'
-export const DOCUMENT_FAILED_TAG_NAME = 'func-operation-document-failed'
 export const GENERATED_APP_READY_TAG_NAME = 'func-operation-generated-app-ready'
-export const GENERATED_APP_FAILED_TAG_NAME = 'func-operation-generated-app-failed'
+export const CONTINUE_TAG_NAME = 'func-operation-continue'
 
 const LEGACY_DOCUMENT_READY_TAG_PREFIX = '[[FUNC_OPERATION_DOCUMENT_READY:'
-const LEGACY_DOCUMENT_FAILED_TAG_PREFIX = '[[FUNC_OPERATION_DOCUMENT_FAILED:'
 const LEGACY_GENERATED_APP_READY_TAG_PREFIX = '[[FUNC_OPERATION_GENERATED_APP_READY:'
-const LEGACY_GENERATED_APP_FAILED_TAG_PREFIX = '[[FUNC_OPERATION_GENERATED_APP_FAILED:'
 const LEGACY_FUNC_OPERATION_TAG_PATTERN = /\[\[FUNC_OPERATION_[^\]]+\]\]/g
 const FUNC_OPERATION_XML_TAG_PATTERN = /<func-operation-[\w-]+\b[^>]*(?:\/>|>[\s\S]*?<\/func-operation-[\w-]+>)/gi
 
 export type PlanningDocType = 'product' | 'technical'
+export type FunctionConversationType = PlanningDocType | 'generation'
 
 export interface DocumentReadyTag {
   functionId: string
   docType: PlanningDocType
 }
 
-export interface DocumentFailedTag {
+export interface ContinueTag {
   functionId: string
-  docType: PlanningDocType
+  conversation: FunctionConversationType
 }
 
 export function buildDocumentReadyTag(functionId: string, docType: PlanningDocType) {
   return `<${DOCUMENT_READY_TAG_NAME} function-id="${escapeXmlAttribute(functionId)}" doc-type="${docType}" />`
 }
 
-export function buildDocumentFailedTag(functionId: string, docType: PlanningDocType) {
-  return `<${DOCUMENT_FAILED_TAG_NAME} function-id="${escapeXmlAttribute(functionId)}" doc-type="${docType}" />`
-}
-
 export function buildGeneratedAppReadyTag(functionId: string) {
   return `<${GENERATED_APP_READY_TAG_NAME} function-id="${escapeXmlAttribute(functionId)}" />`
 }
 
-export function buildGeneratedAppFailedTag(functionId: string) {
-  return `<${GENERATED_APP_FAILED_TAG_NAME} function-id="${escapeXmlAttribute(functionId)}" />`
+export function buildContinueTag(functionId: string, conversation: FunctionConversationType) {
+  return `<${CONTINUE_TAG_NAME} function-id="${escapeXmlAttribute(functionId)}" conversation="${conversation}" />`
 }
 
 export function stripFuncOperationTags(content: string) {
@@ -53,14 +47,6 @@ export function extractDocumentReadyTag(content: string): DocumentReadyTag | nul
   return extractLegacyDocumentTag(content, LEGACY_DOCUMENT_READY_TAG_PREFIX)
 }
 
-export function extractDocumentFailedTag(content: string): DocumentFailedTag | null {
-  const xmlTag = readXmlTagAttributes(content, DOCUMENT_FAILED_TAG_NAME)
-  if (xmlTag?.['function-id'] && isPlanningDocType(xmlTag['doc-type'])) {
-    return { functionId: xmlTag['function-id'], docType: xmlTag['doc-type'] }
-  }
-  return extractLegacyDocumentTag(content, LEGACY_DOCUMENT_FAILED_TAG_PREFIX)
-}
-
 export function extractGeneratedAppReadyFunctionId(content: string) {
   const xmlTag = readXmlTagAttributes(content, GENERATED_APP_READY_TAG_NAME)
   if (xmlTag?.['function-id']) {
@@ -69,19 +55,12 @@ export function extractGeneratedAppReadyFunctionId(content: string) {
   return extractLegacyFunctionId(content, LEGACY_GENERATED_APP_READY_TAG_PREFIX)
 }
 
-export function extractGeneratedAppFailedFunctionId(content: string) {
-  const xmlTag = readXmlTagAttributes(content, GENERATED_APP_FAILED_TAG_NAME)
-  if (xmlTag?.['function-id']) {
-    return xmlTag['function-id']
+export function extractContinueTag(content: string): ContinueTag | null {
+  const xmlTag = readXmlTagAttributes(content, CONTINUE_TAG_NAME)
+  if (xmlTag?.['function-id'] && isFunctionConversationType(xmlTag.conversation)) {
+    return { functionId: xmlTag['function-id'], conversation: xmlTag.conversation }
   }
-  return extractLegacyFunctionId(content, LEGACY_GENERATED_APP_FAILED_TAG_PREFIX)
-}
-
-export function extractConversationFailureMessage(content: string, fallback: string) {
-  const cleaned = stripFuncOperationTags(content)
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-  return cleaned || fallback
+  return null
 }
 
 interface AssistantMessageLike {
@@ -122,26 +101,34 @@ export function findLatestTurnAssistantMessage<T extends AssistantMessageLike>(m
 export function conversationTurnHasOutcomeTag(
   content: string,
   functionId: string,
-  conversation: 'product' | 'technical' | 'generation',
+  conversation: FunctionConversationType,
 ): boolean {
   if (conversation === 'generation') {
-    const readyId = extractGeneratedAppReadyFunctionId(content)
-    if (readyId) {
-      return readyId === functionId
-    }
-    return extractGeneratedAppFailedFunctionId(content) === functionId
+    return extractGeneratedAppReadyFunctionId(content) === functionId
   }
 
   const ready = extractDocumentReadyTag(content)
   if (ready?.functionId === functionId && ready.docType === conversation) {
     return true
   }
-  const failed = extractDocumentFailedTag(content)
-  return failed?.functionId === functionId && failed.docType === conversation
+  return false
+}
+
+export function conversationTurnNeedsContinue(
+  content: string,
+  functionId: string,
+  conversation: FunctionConversationType,
+): boolean {
+  const tag = extractContinueTag(content)
+  return tag?.functionId === functionId && tag.conversation === conversation
 }
 
 function isPlanningDocType(value: string | undefined): value is PlanningDocType {
   return value === 'product' || value === 'technical'
+}
+
+function isFunctionConversationType(value: string | undefined): value is FunctionConversationType {
+  return value === 'product' || value === 'technical' || value === 'generation'
 }
 
 function escapeXmlAttribute(value: string) {
