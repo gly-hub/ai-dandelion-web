@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ClipboardEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useXChat, useXConversations } from '@ant-design/x-sdk'
 import { Badge, Button, Dropdown, Empty, Input, Modal, Spin, Tabs, Tag, Tooltip } from 'antd'
@@ -34,6 +34,7 @@ import { ChatModelSelector, readAutoModelEnabled } from '../../components/ChatMo
 import { SidebarSearchInput } from '../../components/SidebarSearchInput'
 import { TodoDock } from '../../components/TodoDock'
 import { createSession, deleteSession, listMessages, listSessions, updateSession, uploadChatFile } from '../../lib/api'
+import { getClipboardImageFile } from '../../lib/clipboardAttachment'
 import {
   formatSkillLabel,
   listAgentSkillOptions,
@@ -910,6 +911,15 @@ export function AiAgentWorkspace({
     return false
   }
 
+  function handleComposerPaste(event: ClipboardEvent<HTMLElement>) {
+    const file = getClipboardImageFile(event.clipboardData)
+    if (!file || booting || isRequesting || uploadingAttachment) {
+      return
+    }
+    event.preventDefault()
+    void handleAttachmentUpload(file)
+  }
+
   const uploadedAttachmentItems = pendingChatAttachments
 
   function clearComposerAttachments() {
@@ -1518,7 +1528,7 @@ export function AiAgentWorkspace({
             ) : null}
             {error ? <p className="error-banner inline-error">{error}</p> : null}
 
-            <footer className="composer-shell" ref={composerShellRef}>
+            <footer className="composer-shell" ref={composerShellRef} onPaste={handleComposerPaste}>
               <Sender
                 ref={composerRef}
                 value={draft}

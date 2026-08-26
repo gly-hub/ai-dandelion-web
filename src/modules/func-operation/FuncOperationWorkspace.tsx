@@ -1698,7 +1698,7 @@ export function FuncOperationWorkspace() {
     }
     : null
 
-  function handleConversationRequest(params: { content: string }) {
+  function handleConversationRequest(params: ChatInput) {
     setConversationNotice(null)
     onRequest(params)
   }
