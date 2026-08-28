@@ -9,6 +9,7 @@ import type {
   OperationFunction,
   AgentModelOption,
   SystemMenu,
+  TodoTask,
 } from '../../types'
 import { FunctionGenerationConsole, type ChatMessageInfo, type ConversationNotice } from './FunctionGenerationConsole'
 import { resolveFunctionReadiness } from './functionReadiness'
@@ -52,6 +53,7 @@ interface FuncEditorLayoutProps {
   generationLaunchingIds: string[]
   modelOptions: AgentModelOption[]
   selectedModelId: string
+  todoTasks: TodoTask[]
   canAdminEdit: boolean
   canAdminPublish: boolean
   canAdminUnpublish: boolean
@@ -85,6 +87,7 @@ export function FuncEditorLayout(props: FuncEditorLayoutProps) {
     generationLaunchingIds,
     modelOptions,
     selectedModelId,
+    todoTasks,
     canAdminEdit,
     canAdminPublish,
     canAdminUnpublish,
@@ -287,6 +290,7 @@ export function FuncEditorLayout(props: FuncEditorLayoutProps) {
                     onAbort={onAbort}
                     modelOptions={modelOptions}
                     selectedModelId={selectedModelId}
+                    todoTasks={todoTasks}
                   />
                 </FuncEditorChat>
               </div>

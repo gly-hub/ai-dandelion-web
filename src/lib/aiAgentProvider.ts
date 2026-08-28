@@ -12,6 +12,9 @@ export interface ChatInput {
   systemPrompt?: string
   permissionMode?: string
   maxTurns?: number
+  functionOperationId?: string
+  functionId?: string
+  functionConversation?: 'product' | 'technical' | 'generation'
   extra?: ChatExtraItem[]
   messageParts?: MessagePart[]
 }
@@ -61,6 +64,9 @@ export class AiAgentStreamProvider extends AbstractChatProvider<ChatMessage, Cha
       ...(systemPrompt ? { systemPrompt } : {}),
       ...(permissionMode ? { permissionMode } : {}),
       ...(maxTurns ? { maxTurns } : {}),
+      ...(requestParams.functionOperationId ? { functionOperationId: requestParams.functionOperationId } : {}),
+      ...(requestParams.functionId ? { functionId: requestParams.functionId } : {}),
+      ...(requestParams.functionConversation ? { functionConversation: requestParams.functionConversation } : {}),
       ...(requestParams.messageParts ? { messageParts: requestParams.messageParts } : {}),
       ...(extra.length > 0 ? { extra } : {}),
     }
@@ -586,6 +592,9 @@ export function normalizePersistedMessage(message: PersistedMessage): ChatMessag
     content: message.content,
     createdAt: message.createdAt,
     parts,
+    operationId: message.operationId,
+    terminalStatus: message.terminalStatus,
+    terminalReason: message.terminalReason,
   }
 }
 
@@ -629,6 +638,8 @@ function normalizeStreamPayload(event: string, payload: unknown): AgentEvent {
     message,
     agentSessionId: stringOrUndefined(data.agentSessionId ?? data.agent_session_id),
     uiAction,
+    terminalStatus: stringOrUndefined(data.terminalStatus ?? data.terminal_status),
+    terminalReason: stringOrUndefined(data.terminalReason ?? data.terminal_reason),
   }
 }
 
@@ -673,6 +684,9 @@ function applyStreamChunk(message: ChatMessage, chunk: StreamChunk) {
     message.content = persisted.content
     message.createdAt = persisted.createdAt
     message.parts = shouldKeepLocalParts ? message.parts : persisted.parts
+    message.operationId = persisted.operationId
+    message.terminalStatus = persisted.terminalStatus
+    message.terminalReason = persisted.terminalReason
     return
   }
 

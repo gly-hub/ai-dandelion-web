@@ -4466,6 +4466,63 @@
   margin-left: auto;
 }
 
+.console-app .generation-console .generation-composer-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.console-app .generation-console .chat-attachment-trigger {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--console-line);
+  border-radius: 7px;
+  color: var(--console-muted);
+  background: var(--console-surface);
+  cursor: pointer;
+}
+
+.console-app .generation-console .chat-attachment-trigger:hover:not(:disabled),
+.console-app .generation-console .chat-attachment-trigger:focus-visible {
+  border-color: var(--console-blue);
+  color: var(--console-blue);
+  outline: 0;
+}
+
+.console-app .generation-console .generation-attachment-list {
+  padding: 8px 12px 0;
+}
+
+.console-app .generation-console .generation-attachment-list .ant-file-card-list {
+  gap: 6px;
+}
+
+.console-app .generation-console .generation-attachment-uploader.ant-attachment-drop-area {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+}
+
+.console-app .generation-console .generation-attachment-uploader.ant-attachment-drop-area .ant-attachment-placeholder {
+  display: grid;
+  min-height: 100%;
+  border: 1px dashed var(--console-blue);
+  border-radius: 12px;
+  background: rgba(239, 247, 255, 0.96);
+}
+
+.console-app .generation-console .generation-attachment-uploader.ant-attachment-drop-area .ant-attachment-placeholder-inner {
+  color: var(--console-blue);
+}
+
+.console-app .generation-console .generation-attachment-error {
+  padding: 4px 12px 0;
+  color: var(--console-danger, #dc2626);
+  font-size: 12px;
+}
+
 .console-app .chat-slash-command-panel {
   position: absolute;
   left: 14px;
