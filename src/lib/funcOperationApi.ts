@@ -6,6 +6,7 @@ import type {
   FunctionExecutionLog,
   FunctionExecutionLogEvent,
   FunctionExecutionLogPage,
+  FunctionConversationOperation,
   GeneratedApp,
   GeneratedAppInvokeResult,
   OperationFunction,
@@ -182,6 +183,29 @@ export async function ensureOperationFunctionSession(
     sessionId: stringValue(data.sessionId),
     created: Boolean(data.created),
   }
+}
+
+export async function startFunctionConversationOperation(
+  id: string,
+  conversation: 'product' | 'technical' | 'generation',
+  operationId?: string,
+): Promise<FunctionConversationOperation> {
+  const data = await requestJSON<{ operation?: unknown }>(`/func-operation/functions/${id}/conversation-operations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation, ...(operationId ? { operationId } : {}) }),
+  })
+  return normalizeFunctionConversationOperation(data.operation)
+}
+
+export async function getLatestFunctionConversationOperation(
+  id: string,
+  conversation: 'product' | 'technical' | 'generation',
+): Promise<FunctionConversationOperation | null> {
+  const data = await requestJSON<{ operation?: unknown }>(
+    `/func-operation/functions/${id}/conversation-operations/latest?conversation=${encodeURIComponent(conversation)}`,
+  )
+  return data.operation ? normalizeFunctionConversationOperation(data.operation) : null
 }
 
 export async function deleteOperationFunction(id: string): Promise<void> {
@@ -586,6 +610,24 @@ function normalizeOperationFunction(raw: unknown): OperationFunction {
     createdAt: numberValue(data.createdAt ?? data.created_at),
     updatedAt: numberValue(data.updatedAt ?? data.updated_at),
     readiness: normalizeFunctionReadiness(data.readiness),
+  }
+}
+
+function normalizeFunctionConversationOperation(raw: unknown): FunctionConversationOperation {
+  const data = asRecord(raw)
+  const conversation = stringValue(data.conversation) as FunctionConversationOperation['conversation']
+  return {
+    id: stringValue(data.id),
+    functionId: stringValue(data.functionId ?? data.function_id),
+    sessionId: stringValue(data.sessionId ?? data.session_id),
+    conversation: conversation === 'product' || conversation === 'technical' || conversation === 'generation' ? conversation : 'product',
+    state: stringValue(data.state),
+    terminalStatus: stringValue(data.terminalStatus ?? data.terminal_status),
+    terminalReason: stringValue(data.terminalReason ?? data.terminal_reason),
+    outcome: stringValue(data.outcome),
+    createdAt: numberValue(data.createdAt ?? data.created_at),
+    updatedAt: numberValue(data.updatedAt ?? data.updated_at),
+    finishedAt: numberValue(data.finishedAt ?? data.finished_at),
   }
 }
 

@@ -63,6 +63,7 @@ import {
 import { resolveMenuIcon } from '../../lib/menuIcons'
 import { findNavMenuByViewKey, pickDefaultViewKey } from '../../lib/navMenus'
 import { buildAiAgentPath, parseAiAgentPath } from '../../lib/routes'
+import { buildCompactTodoTasks, buildTodoDockData } from '../../lib/todoTasks'
 import type { AgentFunctionSkillOption, AgentMCPServerOption, AgentModelOption, AgentSkillOption, ChatExtraItem, ChatMessage, ChatStatus, PersistedMessage, Session, StreamChunk, TodoTask } from '../../types'
 
 const MESSAGE_PAGE_SIZE = 40
@@ -2046,73 +2047,6 @@ function formatSessionUpdatedAt(timestamp: number): string {
   return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function buildTodoDockData(messages: ChatMessage[]) {
-  const tasksById = new Map<string, TodoTask>()
-  const taskIdByToolId = new Map<string, string>()
-  let order = 0
-
-  for (const message of messages) {
-    if (message.role !== 'assistant') {
-      continue
-    }
-
-    // A TaskCreate in a new assistant message starts a fresh todo list.
-    // Clear the previous list once, while keeping all TaskCreate parts in
-    // this message so a multi-task plan is accumulated correctly.
-    const startsNewTodoList = message.parts.some(
-      (part) => part.type === 'tool' && part.toolName === 'TaskCreate',
-    )
-    if (startsNewTodoList) {
-      tasksById.clear()
-      taskIdByToolId.clear()
-      order = 0
-    }
-
-    for (const part of message.parts) {
-      if (part.type !== 'tool' || !isTaskTool(part.toolName)) {
-        continue
-      }
-
-      order += 1
-      applyTodoToolPart(part, order, tasksById, taskIdByToolId)
-    }
-  }
-
-  return {
-    tasks: Array.from(tasksById.values())
-      .sort((left, right) => {
-        if (left.status === 'in_progress' && right.status !== 'in_progress') {
-          return -1
-        }
-        if (left.status !== 'in_progress' && right.status === 'in_progress') {
-          return 1
-        }
-        return left.order - right.order
-      }),
-  }
-}
-
-function buildCompactTodoTasks(messages: ChatMessage[], tasks: TodoTask[]) {
-  let latestTodoMessageIndex = -1
-  let latestUserMessageIndex = -1
-
-  messages.forEach((message, index) => {
-    if (message.role === 'user') {
-      latestUserMessageIndex = index
-      return
-    }
-    if (message.role === 'assistant' && message.parts.some(
-      (part) => part.type === 'tool' && isTaskTool(part.toolName),
-    )) {
-      latestTodoMessageIndex = index
-    }
-  })
-
-  // The compact panel tracks the current turn only. Once a later user prompt
-  // starts without new task-tool activity, completed work moves to history.
-  return latestTodoMessageIndex >= latestUserMessageIndex ? tasks : []
-}
-
 function buildTodoStatusSummary(tasks: TodoTask[]) {
   const counts: Record<TodoTask['status'], number> = {
     pending: 0,
@@ -2164,108 +2098,6 @@ function renderTodoStatusIcon(status: TodoTask['status']) {
     return <CloseCircleOutlined />
   }
   return <ClockCircleOutlined />
-}
-
-function applyTodoToolPart(
-  part: Extract<ChatMessage['parts'][number], { type: 'tool' }>,
-  order: number,
-  tasksById: Map<string, TodoTask>,
-  taskIdByToolId: Map<string, string>,
-) {
-  const input = safeParseObject(part.input || '')
-  const resultText = String(part.result || '')
-
-  if (part.toolName === 'TaskCreate') {
-    const taskId = firstNonEmpty(extractTaskIdFromResult(resultText), stringValue(input.taskId), part.toolId)
-    const mappedTaskId = taskIdByToolId.get(part.toolId) || taskId
-    const task = tasksById.get(mappedTaskId) || {
-      taskId,
-      title: firstNonEmpty(stringValue(input.subject), stringValue(input.activeForm), '未命名任务'),
-      description: stringValue(input.description),
-      status: 'pending' as const,
-      order,
-    }
-
-    task.taskId = taskId
-    task.title = firstNonEmpty(stringValue(input.subject), stringValue(input.activeForm), task.title)
-    task.description = stringValue(input.description) || task.description || ''
-    task.status = normalizeTodoStatus(task.status)
-    task.order = Math.min(task.order, order)
-
-    tasksById.set(mappedTaskId, task)
-    taskIdByToolId.set(part.toolId, mappedTaskId)
-    return
-  }
-
-  if (part.toolName === 'TaskUpdate') {
-    const taskId = firstNonEmpty(stringValue(input.taskId), extractTaskIdFromResult(resultText))
-    if (!taskId) {
-      return
-    }
-
-    const task = tasksById.get(taskId) || {
-      taskId,
-      title: `任务 #${taskId}`,
-      description: '',
-      status: 'pending' as const,
-      order,
-    }
-
-    task.status = normalizeTodoStatus(input.status || task.status)
-    task.order = Math.min(task.order, order)
-    tasksById.set(taskId, task)
-    return
-  }
-}
-
-function safeParseObject(value: string) {
-  if (!value.trim()) {
-    return {} as Record<string, unknown>
-  }
-
-  try {
-    const parsed = JSON.parse(value)
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
-}
-
-function extractTaskIdFromResult(result: string) {
-  const match = result.match(/task\s*#(\d+)/i)
-  return match ? match[1] : ''
-}
-
-function normalizeTodoStatus(status: unknown): TodoTask['status'] {
-  const normalized = String(status || '').toLowerCase()
-  if (normalized === 'completed') {
-    return 'completed'
-  }
-  if (normalized === 'failed' || normalized === 'error') {
-    return 'failed'
-  }
-  if (normalized === 'in_progress' || normalized === 'running') {
-    return 'in_progress'
-  }
-  return 'pending'
-}
-
-function isTaskTool(toolName?: string) {
-  return typeof toolName === 'string' && toolName.startsWith('Task')
-}
-
-function firstNonEmpty(...values: Array<unknown>) {
-  for (const value of values) {
-    const text = stringValue(value)
-    if (text) {
-      return text
-    }
-  }
-  return ''
-}
-
-function stringValue(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
 function sessionTitleFromContent(content: string) {

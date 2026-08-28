@@ -425,6 +425,9 @@ export function normalizeMessage(raw: unknown): PersistedMessage {
     extra,
     skills,
     skillLabels,
+    operationId: stringValue(data.operationId ?? data.operation_id),
+    terminalStatus: stringValue(data.terminalStatus ?? data.terminal_status),
+    terminalReason: stringValue(data.terminalReason ?? data.terminal_reason),
     createdAt: numberValue(data.createdAt ?? data.created_at),
   }
 }

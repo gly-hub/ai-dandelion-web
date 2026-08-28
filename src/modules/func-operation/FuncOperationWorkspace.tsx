@@ -51,6 +51,8 @@ import {
   deleteOperationFunction,
   deleteFunctionDataForm,
   ensureOperationFunctionSession,
+  getLatestFunctionConversationOperation,
+  startFunctionConversationOperation,
   applyFunctionCode,
   invokeGeneratedApp,
   invokeFunctionPreview,
@@ -94,6 +96,7 @@ import type {
   FunctionDocument,
   FunctionCodeState,
   FunctionDataForm,
+  FunctionConversationOperation,
   GeneratedApp,
   OperationFunction,
   PublicConfig,
@@ -111,6 +114,7 @@ import { NotificationManagementWorkspace } from '../system/NotificationManagemen
 import { RoleManagementWorkspace } from '../system/RoleManagementWorkspace'
 import { UserManagementWorkspace } from '../system/UserManagementWorkspace'
 import type { ConversationNotice } from './FunctionGenerationConsole'
+import { buildCompactTodoTasks, buildTodoDockData } from '../../lib/todoTasks'
 import { GeneratedAppPreviewCanvas } from './GeneratedAppPreviewCanvas'
 import type { PreviewErrorState } from './GeneratedAppPreviewCanvas'
 import { FunctionExecutionLogDrawer } from './FunctionExecutionLogDrawer'
@@ -129,16 +133,6 @@ import {
   resolveStepPrimaryAction,
 } from './functionReadiness'
 import type { FunctionNextAction } from '../../types'
-import {
-  buildContinueTag,
-  buildDocumentReadyTag,
-  buildGeneratedAppReadyTag,
-  extractDocumentReadyTag,
-  extractGeneratedAppReadyFunctionId,
-  conversationTurnNeedsContinue,
-  conversationTurnHasOutcomeTag,
-  findLatestTurnAssistantMessage,
-} from './funcOperationTags'
 
 type ViewMode = 'published' | 'admin'
 type AdminPage = 'functions' | 'editor'
@@ -207,6 +201,8 @@ interface PendingConversationSend {
   conversation: EditorConversation
   sessionId: string
   content: string
+  operationId: string
+  input?: ChatInput
   token: number
 }
 
@@ -277,15 +273,14 @@ export function FuncOperationWorkspace() {
   const [generationLaunchingIds, setGenerationLaunchingIds] = useState<string[]>([])
   const [conversationOutboundPending, setConversationOutboundPending] = useState(false)
   const [conversationNotice, setConversationNotice] = useState<WorkspaceConversationNotice | null>(null)
+  const [conversationOperations, setConversationOperations] = useState<Partial<Record<EditorConversation, FunctionConversationOperation>>>({})
   const [editorSessionNonce, setEditorSessionNonce] = useState(0)
   const [modelOptions, setModelOptions] = useState<AgentModelOption[]>([])
   const [sessionConfigs, setSessionConfigs] = useState<AgentSessionConfig[]>([])
   const sessionConfigsRef = useRef<AgentSessionConfig[]>([])
   const modelOptionsRef = useRef<AgentModelOption[]>([])
   const [form] = Form.useForm<{ name: string; description: string; menuParentId?: string }>()
-  const handledReadyTagsRef = useRef<Set<string>>(new Set())
-  const handledDocumentReadyTagsRef = useRef<Set<string>>(new Set())
-  const handledContinuePromptsRef = useRef<Set<string>>(new Set())
+  const handledOperationStateRef = useRef<Set<string>>(new Set())
   const handledReleaseEventsRef = useRef<Set<string>>(new Set())
   const loadedDraftKeyRef = useRef('')
   const loadedCodeStateKeyRef = useRef('')
@@ -517,6 +512,16 @@ export function FuncOperationWorkspace() {
     },
   })
 
+  const activeConversationOperation = conversationOperations[resolvedEditorConversation] || null
+  const activeConversationTodoTasks = useMemo(() => {
+    if (!activeConversationOperation?.id) {
+      return []
+    }
+    const sessionMessages = messages.map((item) => item.message)
+    const tasks = buildTodoDockData(sessionMessages).tasks
+    return buildCompactTodoTasks(sessionMessages, tasks)
+  }, [activeConversationOperation?.id, isRequesting, messages])
+
   onRequestRef.current = onRequest
 
   function handleUserNavSelect(viewKey: string) {
@@ -620,9 +625,8 @@ export function FuncOperationWorkspace() {
       setMessages([])
     }
     flushedConversationSendTokenRef.current = 0
-    handledReadyTagsRef.current.clear()
-    handledDocumentReadyTagsRef.current.clear()
-    handledContinuePromptsRef.current.clear()
+    handledOperationStateRef.current.clear()
+    setConversationOperations({})
     setConversationOutboundPending(false)
     setGenerationLaunchingIds([])
     setConversationNotice(null)
@@ -663,7 +667,13 @@ export function FuncOperationWorkspace() {
     flushedConversationSendTokenRef.current = pending.token
     pendingConversationSendRef.current = null
     chatDispatchInFlightRef.current = true
-    onRequestRef.current({ content })
+    onRequestRef.current({
+      ...(pending.input || {}),
+      content,
+      functionOperationId: pending.operationId,
+      functionId: pending.functionId,
+      functionConversation: pending.conversation,
+    })
   }, [
     activeSessionId,
     activeAdminFunction?.id,
@@ -713,8 +723,8 @@ export function FuncOperationWorkspace() {
     setPreviewError(null)
     loadedDraftKeyRef.current = ''
     loadedCodeStateKeyRef.current = ''
-    handledReadyTagsRef.current.clear()
-    handledDocumentReadyTagsRef.current.clear()
+    handledOperationStateRef.current.clear()
+    setConversationOperations({})
   }
 
   function leaveEditor() {
@@ -892,7 +902,7 @@ export function FuncOperationWorkspace() {
         targetFunction,
         'generation',
         buildGeneratedAppBuilderPrompt(targetFunction, targetApp, publicConfigCatalog),
-        { step: 'code' },
+        { step: 'code', forceNewOperation: true },
       )
       if (!queued) {
         setGenerationLaunchingIds((current) => current.filter((id) => id !== functionItem.id))
@@ -955,7 +965,7 @@ export function FuncOperationWorkspace() {
     functionItem: OperationFunction,
     conversation: EditorConversation,
     content: string,
-    options?: { step?: EditorStep; workflowStage?: string },
+    options?: { step?: EditorStep; workflowStage?: string; operationId?: string; forceNewOperation?: boolean; input?: ChatInput },
   ): Promise<boolean> {
     if (isRequesting || chatDispatchInFlightRef.current) {
       setError('上一条消息还在处理中，请稍候。')
@@ -991,6 +1001,22 @@ export function FuncOperationWorkspace() {
       return false
     }
 
+    let operation: FunctionConversationOperation
+    try {
+      const latest = options?.forceNewOperation
+        ? null
+        : await getLatestFunctionConversationOperation(target.id, conversation)
+      const resumeOperationId = options?.operationId || (
+        latest && isResumableConversationOperation(latest.state) ? latest.id : undefined
+      )
+      operation = await startFunctionConversationOperation(target.id, conversation, resumeOperationId)
+      setConversationOperations((current) => ({ ...current, [conversation]: operation }))
+    } catch (err) {
+      setConversationOutboundPending(false)
+      setError(asError(err).message)
+      return false
+    }
+
     const pending = pendingConversationSendRef.current
     if (
       pending?.functionId === target.id &&
@@ -1008,6 +1034,8 @@ export function FuncOperationWorkspace() {
       conversation,
       sessionId,
       content,
+      operationId: operation.id,
+      input: options?.input,
       token: conversationSendTokenRef.current,
     }
     setConversationSendTick((tick) => tick + 1)
@@ -1019,13 +1047,16 @@ export function FuncOperationWorkspace() {
       return
     }
     setConversationNotice(null)
-    await queueConversationRequest(functionItem, editorConversation, '继续')
+    await queueConversationRequest(functionItem, editorConversation, '继续', {
+      operationId: conversationOperations[editorConversation]?.id,
+    })
   }
 
   async function handleGenerateProductDoc(functionItem: OperationFunction) {
     await queueConversationRequest(functionItem, 'product', buildProductDocPrompt(functionItem, publicConfigCatalog), {
       step: 'product',
       workflowStage: FUNCTION_WORKFLOW_STAGE.productDoc,
+      forceNewOperation: true,
     })
   }
 
@@ -1037,6 +1068,7 @@ export function FuncOperationWorkspace() {
     await queueConversationRequest(functionItem, 'technical', buildTechnicalDocPrompt(functionItem, publicConfigCatalog), {
       step: 'technical',
       workflowStage: FUNCTION_WORKFLOW_STAGE.technicalDoc,
+      forceNewOperation: true,
     })
   }
 
@@ -1555,6 +1587,25 @@ export function FuncOperationWorkspace() {
   ])
 
   useEffect(() => {
+    if (adminPage !== 'editor' || !activeAdminFunction) {
+      return
+    }
+    let disposed = false
+    void getLatestFunctionConversationOperation(activeAdminFunction.id, resolvedEditorConversation)
+      .then((operation) => {
+        if (!disposed) {
+          setConversationOperations((current) => ({ ...current, [resolvedEditorConversation]: operation || undefined }))
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setConversationOperations((current) => ({ ...current, [resolvedEditorConversation]: undefined }))
+        }
+      })
+    return () => { disposed = true }
+  }, [adminPage, activeAdminFunction?.id, resolvedEditorConversation, editorSessionNonce])
+
+  useEffect(() => {
     if (isRequesting) {
       setConversationNotice(null)
       setConversationOutboundPending(false)
@@ -1563,129 +1614,68 @@ export function FuncOperationWorkspace() {
   }, [isRequesting])
 
   useEffect(() => {
-    if (isRequesting || messages.length === 0) {
+    if (isRequesting || adminPage !== 'editor' || !activeAdminFunction) {
       return
     }
-    const latestAssistant = findLatestTurnAssistantMessage(messages)
-    if (!latestAssistant) {
-      return
-    }
-    if (latestAssistant.status === 'loading' || latestAssistant.status === 'updating') {
-      return
-    }
+    let disposed = false
+    void getLatestFunctionConversationOperation(activeAdminFunction.id, resolvedEditorConversation)
+      .then((operation) => {
+        if (disposed || !operation) return
+        setConversationOperations((current) => ({ ...current, [resolvedEditorConversation]: operation }))
+        const stateKey = `${operation.id}:${operation.state}:${operation.updatedAt}`
+        if (handledOperationStateRef.current.has(stateKey)) return
+        handledOperationStateRef.current.add(stateKey)
 
-    if (editorConversation === 'generation') {
-      const readyFunctionId = extractGeneratedAppReadyFunctionId(latestAssistant.message.content)
-      const readyTagKey = `${latestAssistant.id}:${readyFunctionId}`
-      if (readyFunctionId && functions.some((item) => item.id === readyFunctionId) && !handledReadyTagsRef.current.has(readyTagKey)) {
-        handledReadyTagsRef.current.add(readyTagKey)
-        setGenerationPreviewReadyIds((current) => (
-          current.includes(readyFunctionId) ? current : [...current, readyFunctionId]
-        ))
-        setConversationNotice({
-          conversation: 'generation',
-          type: 'success',
-          message: '页面已生成完成，可点击「刷新并预览」查看最新效果。',
-        })
-        queueMicrotask(() => {
-          const target = functions.find((item) => item.id === readyFunctionId)
-          if (!target || target.workflowStage === FUNCTION_WORKFLOW_STAGE.codeGenerated) {
-            return
-          }
-          void (async () => {
-            invalidateGeneratedAppModuleCache(target.generatedAppId)
-            setPreviewReloadToken((current) => current + 1)
-            const updated = await applyLatestGeneratedCode(target, { silent: true })
-              || await saveFunctionPatch(target, { workflowStage: FUNCTION_WORKFLOW_STAGE.codeGenerated })
-              || target
-            await refreshCodeState(updated, { silent: true, force: true })
-          })()
-        })
-        return
-      }
-
-      if (shouldPromptContinueConversation(
-        activeAdminFunction,
-        'generation',
-        latestAssistant.message.content,
-        openedGenerationIds,
-      )) {
-        const continueKey = `${latestAssistant.id}:${activeAdminFunction?.id}:generation`
-        if (activeAdminFunction?.id && !handledContinuePromptsRef.current.has(continueKey)) {
-          handledContinuePromptsRef.current.add(continueKey)
+        if (operation.state === 'needs_continue') {
           setConversationNotice({
-            conversation: 'generation',
+            conversation: operation.conversation,
             type: 'warning',
-            message: '本轮对话已结束，但页面尚未生成完成。请点击「继续」让 AI 接着完成。',
+            message: operation.conversation === 'generation'
+              ? '本轮已达到执行轮数限制，页面尚未完成。'
+              : '本轮已达到执行轮数限制，文档尚未完成。',
             actionLabel: '继续',
           })
+          return
         }
-      }
-      return
-    }
+        if (operation.state === 'blocked') {
+          setConversationNotice({ conversation: operation.conversation, type: 'error', message: operation.terminalReason || '本轮执行异常，请根据对话内容调整后重试。' })
+          return
+        }
+        if (operation.state !== 'completed') return
 
-    const ready = extractDocumentReadyTag(latestAssistant.message.content)
-    if (ready && ready.functionId === activeAdminFunction?.id) {
-      const conversationMatches = (ready.docType === 'product' && editorConversation === 'product')
-        || (ready.docType === 'technical' && editorConversation === 'technical')
-      const stepMatches = editorStep === ready.docType
-      if (conversationMatches || stepMatches) {
-        const tagKey = `${latestAssistant.id}:${ready.functionId}:${ready.docType}`
-        if (!handledDocumentReadyTagsRef.current.has(tagKey)) {
-          handledDocumentReadyTagsRef.current.add(tagKey)
-          loadedDraftKeyRef.current = ''
-          setConversationNotice({
-            conversation: ready.docType,
-            type: 'success',
-            message: ready.docType === 'product'
-              ? '产品方案已写入 AI 最新版本，请在左侧查看。'
-              : '技术方案已写入 AI 最新版本，请在左侧查看。',
-          })
+        if (operation.conversation === 'generation') {
+          setGenerationPreviewReadyIds((current) => current.includes(activeAdminFunction.id) ? current : [...current, activeAdminFunction.id])
+          setConversationNotice({ conversation: 'generation', type: 'success', message: '页面已生成完成，可点击「刷新并预览」查看最新效果。' })
           queueMicrotask(() => {
-            if (!activeAdminFunction) {
-              return
-            }
             void (async () => {
-              await refreshDraftDocument(activeAdminFunction, ready.docType, { switchToDraft: true, silent: true, force: true })
-              await reloadFunctions()
+              invalidateGeneratedAppModuleCache(activeAdminFunction.generatedAppId)
+              setPreviewReloadToken((current) => current + 1)
+              const updated = await applyLatestGeneratedCode(activeAdminFunction, { silent: true })
+                || await saveFunctionPatch(activeAdminFunction, { workflowStage: FUNCTION_WORKFLOW_STAGE.codeGenerated })
+                || activeAdminFunction
+              await refreshCodeState(updated, { silent: true, force: true })
             })()
           })
+          return
         }
-      }
-    }
 
-    if (
-      (editorConversation === 'product' || editorConversation === 'technical')
-      && shouldPromptContinueConversation(
-        activeAdminFunction,
-        editorConversation,
-        latestAssistant.message.content,
-        openedGenerationIds,
-      )
-    ) {
-      const continueKey = `${latestAssistant.id}:${activeAdminFunction?.id}:${editorConversation}`
-      if (activeAdminFunction?.id && !handledContinuePromptsRef.current.has(continueKey)) {
-        handledContinuePromptsRef.current.add(continueKey)
+        loadedDraftKeyRef.current = ''
+        const documentType: PlanningDocType = operation.conversation === 'product' ? 'product' : 'technical'
         setConversationNotice({
-          conversation: editorConversation,
-          type: 'warning',
-          message: editorConversation === 'product'
-            ? '本轮对话已结束，但产品方案尚未写入。请点击「继续」让 AI 接着完成。'
-            : '本轮对话已结束，但技术方案尚未写入。请点击「继续」让 AI 接着完成。',
-          actionLabel: '继续',
+          conversation: documentType,
+          type: 'success',
+          message: documentType === 'product' ? '产品方案已写入 AI 最新版本，请在左侧查看。' : '技术方案已写入 AI 最新版本，请在左侧查看。',
         })
-      }
-    }
-  }, [
-    isRequesting,
-    messages,
-    editorConversation,
-    editorStep,
-    activeAdminFunction?.id,
-    activeAdminFunction?.workflowStage,
-    functions,
-    openedGenerationIds,
-  ])
+        queueMicrotask(() => {
+          void (async () => {
+            await refreshDraftDocument(activeAdminFunction, documentType, { switchToDraft: true, silent: true, force: true })
+            await reloadFunctions()
+          })()
+        })
+      })
+      .catch(() => undefined)
+    return () => { disposed = true }
+  }, [adminPage, activeAdminFunction, isRequesting, resolvedEditorConversation])
 
   useEffect(() => {
     if (adminPage !== 'editor' || !activeAdminFunction) {
@@ -1724,7 +1714,10 @@ export function FuncOperationWorkspace() {
 
   function handleConversationRequest(params: ChatInput) {
     setConversationNotice(null)
-    onRequest(params)
+    if (!activeAdminFunction) {
+      return
+    }
+    void queueConversationRequest(activeAdminFunction, resolvedEditorConversation, params.content, { input: params })
   }
 
   function handleNoticeAction() {
@@ -2024,6 +2017,7 @@ export function FuncOperationWorkspace() {
         generationLaunchingIds={generationLaunchingIds}
         modelOptions={modelOptions}
         selectedModelId={resolveFunctionConversationModelId(sessionConfigs, resolvedEditorConversation, modelOptions) || ''}
+        todoTasks={activeConversationTodoTasks}
         canAdminEdit={canAdminEdit}
         canAdminPublish={canAdminPublish}
         canAdminUnpublish={canAdminUnpublish}
@@ -2605,41 +2599,6 @@ function isEditorStepAccessible(
   }
 }
 
-function shouldPromptContinueConversation(
-  functionItem: OperationFunction | null | undefined,
-  conversation: EditorConversation,
-  content: string,
-  openedGenerationIds: string[],
-): boolean {
-  if (!functionItem) {
-    return false
-  }
-  if (conversationTurnHasOutcomeTag(content, functionItem.id, conversation)) {
-    return false
-  }
-  if (conversationTurnNeedsContinue(content, functionItem.id, conversation)) {
-    return true
-  }
-  if (conversation !== 'generation' || isWaitingForUserInput(content)) {
-    return false
-  }
-  // A hard stop can happen before the model emits its pending-continuation tag.
-  // Keep code generation recoverable while the workflow still marks it as unfinished.
-  return functionItem.workflowStage === FUNCTION_WORKFLOW_STAGE.codeGeneration
-    || openedGenerationIds.includes(functionItem.id)
-}
-
-function isWaitingForUserInput(content: string) {
-  const normalized = content.trim()
-  if (!normalized) {
-    return false
-  }
-  if (/[?？]\s*$/.test(normalized)) {
-    return true
-  }
-  return /(?:请|需要|麻烦).{0,16}(?:补充|确认|提供|选择|回复|说明|告知)/.test(normalized)
-}
-
 function getPlanningStepHint(step: EditorStep, functionItem: OperationFunction) {
   switch (step) {
     case 'product':
@@ -2756,10 +2715,8 @@ function buildProductDocPrompt(functionItem: OperationFunction, publicConfigs: P
     `功能名称：${functionItem.name}`,
     `功能描述：${description}`,
     `draft 文件：${getDraftDocumentPath(functionItem, 'product')}`,
-    `完成标签：${buildDocumentReadyTag(functionItem.id, 'product')}`,
-    `待继续标签：${buildContinueTag(functionItem.id, 'product')}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
-    '要求：成功完成并写入 draft 后，在对话回复最后一行输出完成标签；本轮因轮数、时间或执行边界结束且仍需 AI 下一轮继续时，在最后一行输出待继续标签；等待用户补充信息时不输出任何标签。所有标签禁止写入 draft 文档正文。',
+    '先使用 TaskCreate 和 TaskUpdate 制定并执行本次请求的任务列表。需求不足时使用 AskUserQuestion 收集信息；只有完整产品文档已写入 draft 文件后，才调用 submit_product_document_draft 工具。不要输出 XML 或文本状态标签。',
   ].join('\n')
 }
 
@@ -2770,10 +2727,8 @@ function buildTechnicalDocPrompt(functionItem: OperationFunction, publicConfigs:
     `功能名称：${functionItem.name}`,
     `产品文档（applied）：${productDocPath}`,
     `draft 文件：${getDraftDocumentPath(functionItem, 'technical')}`,
-    `完成标签：${buildDocumentReadyTag(functionItem.id, 'technical')}`,
-    `待继续标签：${buildContinueTag(functionItem.id, 'technical')}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
-    '要求：成功完成并写入 draft 后，在对话回复最后一行输出完成标签；本轮因轮数、时间或执行边界结束且仍需 AI 下一轮继续时，在最后一行输出待继续标签；等待用户补充信息时不输出任何标签。所有标签禁止写入 draft 文档正文。',
+    '先使用 TaskCreate 和 TaskUpdate 制定并执行本次请求的任务列表。实现约束不清时使用 AskUserQuestion；只有完整技术文档已写入 draft 文件后，才调用 submit_technical_document_draft 工具。不要输出 XML 或文本状态标签。',
   ].join('\n')
 }
 
@@ -2791,14 +2746,12 @@ function buildGeneratedAppBuilderPrompt(functionItem: OperationFunction, app: Ge
     `appId：${app.id}`,
     `appDir：${appFolder}`,
     `tablePrefix：${tablePrefix}`,
-    `完成标签：${buildGeneratedAppReadyTag(functionItem.id)}`,
-    `待继续标签：${buildContinueTag(functionItem.id, 'generation')}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
     '按钮权限要求：manifest.actions 必须包含所有会触发新增、编辑、删除、归档、分配、审批、保存等状态变更的 action；列表、详情、查询等只读 action 不写入 manifest.actions。',
     '按钮展示要求：所有会触发 manifest.actions 中 action 的按钮、菜单项、弹窗按钮、详情页按钮、子模块按钮，都必须在渲染前调用 `context.can(actionKey)` 或透传后的同等 can 方法判断；无权限时不要渲染按钮。',
     '嵌套界面要求：如果按钮在 modal、drawer、tab、子表格、详情面板等内部组件里，必须把 can 方法从 render(context) 一路透传进去，禁止只在外层列表做权限判断。',
     '提交自检：不得出现 “Permission checks removed”、用 `canManage = true` 放开受控按钮、`!can || can(action)` 这类默认放开受控按钮的写法；后端仍会兜底鉴权，但前端必须隐藏无权限按钮。未受控的只读入口可以默认展示。',
-    '要求：成功完成并通过自检后，在对话回复最后一行输出完成标签；本轮因轮数、时间或执行边界结束且仍需 AI 下一轮继续时，在最后一行输出待继续标签；等待用户补充信息时不输出任何标签。所有标签禁止写入文档或代码文件。',
+    '先使用 TaskCreate 和 TaskUpdate 制定并执行本次请求的任务列表。只有应用文件、构建和自检均已完成后，才调用 submit_generated_app 工具。不要输出 XML 或文本状态标签。',
   ].join('\n')
 }
 
@@ -2835,4 +2788,8 @@ function getPublishedDocumentPath(functionItem: OperationFunction, docType: 'pro
 
 function asError(error: unknown) {
   return error instanceof Error ? error : new Error('未知错误')
+}
+
+function isResumableConversationOperation(state: string) {
+  return state === 'awaiting_user' || state === 'needs_continue'
 }

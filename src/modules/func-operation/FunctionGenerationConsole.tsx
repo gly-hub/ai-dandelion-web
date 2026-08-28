@@ -3,10 +3,11 @@ import { Alert, Button, Spin, Tag } from 'antd'
 import { Attachments, Bubble, Sender, Welcome } from '@ant-design/x'
 import { InboxOutlined, PaperClipOutlined } from '@ant-design/icons'
 import { MessageBubble } from '../../components/MessageBubble'
+import { TodoDock } from '../../components/TodoDock'
 import { buildBubbleItemKey } from '../../lib/chatBubble'
 import { uploadChatFile } from '../../lib/api'
 import { getClipboardImageFile } from '../../lib/clipboardAttachment'
-import type { AgentModelOption, ChatMessage, ChatStatus, MessagePart } from '../../types'
+import type { AgentModelOption, ChatMessage, ChatStatus, MessagePart, TodoTask } from '../../types'
 import type { ChatInput } from '../../lib/aiAgentProvider'
 
 type EditorConversation = 'product' | 'technical' | 'generation'
@@ -56,6 +57,7 @@ interface FunctionGenerationConsoleProps {
   outboundPending?: boolean
   modelOptions?: AgentModelOption[]
   selectedModelId?: string
+  todoTasks?: TodoTask[]
   onRequest: (params: ChatInput) => void
   onAbort: () => void
 }
@@ -353,6 +355,7 @@ export const FunctionGenerationConsole = memo(function FunctionGenerationConsole
   outboundPending = false,
   modelOptions = [],
   selectedModelId = '',
+  todoTasks = [],
   onRequest,
   onAbort,
 }: FunctionGenerationConsoleProps) {
@@ -398,6 +401,11 @@ export const FunctionGenerationConsole = memo(function FunctionGenerationConsole
               </Button>
             ) : undefined}
           />
+        ) : null}
+        {todoTasks.length > 0 ? (
+          <section className="agent-compact-todo-panel" aria-label="待办列表">
+            <TodoDock tasks={todoTasks} loading={isRequesting} compact />
+          </section>
         ) : null}
         <div className="generation-console-composer">
           <GenerationConsoleComposer
