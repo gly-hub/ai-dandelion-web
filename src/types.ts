@@ -131,6 +131,9 @@ export interface PersistedMessage {
   extra?: ChatExtraItem[]
   skills?: string[]
   skillLabels?: Record<string, string>
+  operationId?: string
+  terminalStatus?: string
+  terminalReason?: string
   createdAt: number
 }
 
@@ -147,6 +150,9 @@ export interface ChatMessage {
   createdAt: number
   sessionId?: string
   id?: string
+  operationId?: string
+  terminalStatus?: string
+  terminalReason?: string
 }
 
 export interface AgentEvent {
@@ -163,6 +169,8 @@ export interface AgentEvent {
   message?: PersistedMessage
   agentSessionId?: string
   uiAction?: UIAction
+  terminalStatus?: string
+  terminalReason?: string
 }
 
 export type UIAction =
@@ -268,6 +276,20 @@ export interface OperationFunction {
   createdAt: number
   updatedAt: number
   readiness?: FunctionReadiness
+}
+
+export interface FunctionConversationOperation {
+  id: string
+  functionId: string
+  sessionId: string
+  conversation: 'product' | 'technical' | 'generation'
+  state: 'running' | 'awaiting_user' | 'needs_continue' | 'completed' | 'blocked' | 'cancelled' | 'superseded' | string
+  terminalStatus: string
+  terminalReason: string
+  outcome: string
+  createdAt: number
+  updatedAt: number
+  finishedAt: number
 }
 
 export type FunctionNextAction =

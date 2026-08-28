@@ -6,7 +6,6 @@ import type { ChatMessage, ChatStatus, MessagePart } from '../types'
 import { MarkdownBlock } from './MarkdownBlock'
 import { getUploadDownloadURL, submitAskUserQuestion, submitToolPermission } from '../lib/api'
 
-import { stripFuncOperationTags } from '../modules/func-operation/funcOperationTags'
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -520,15 +519,7 @@ function isAskUserQuestion(part: Extract<MessagePart, { type: 'tool' }>) {
 
 function visibleParts(parts: MessagePart[]) {
   return parts
-    .map((part) => {
-      if (part.type !== 'text') {
-        return part
-      }
-      return {
-        ...part,
-        text: stripFuncOperationTags(part.text),
-      }
-    })
+    .map((part) => part)
     .filter((part) => {
       if (part.type === 'text') {
         return Boolean(part.text)
