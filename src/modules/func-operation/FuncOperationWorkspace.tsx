@@ -100,6 +100,8 @@ import type {
   GeneratedApp,
   OperationFunction,
   PublicConfig,
+  FunctionOperationBootstrap,
+  MessagePart,
   StreamChunk,
   SystemMenu,
 } from '../../types'
@@ -119,6 +121,7 @@ import { GeneratedAppPreviewCanvas } from './GeneratedAppPreviewCanvas'
 import type { PreviewErrorState } from './GeneratedAppPreviewCanvas'
 import { FunctionExecutionLogDrawer } from './FunctionExecutionLogDrawer'
 import { PreviewDebugLogFloat } from './PreviewDebugLogFloat'
+import { InitialProductDocumentModal } from './InitialProductDocumentModal'
 import { PublicConfigManagementWorkspace } from './PublicConfigManagementWorkspace'
 import { ExternalAPIManagementWorkspace } from './ExternalAPIManagementWorkspace'
 import { UploadKeyManagementWorkspace } from './UploadKeyManagementWorkspace'
@@ -273,6 +276,7 @@ export function FuncOperationWorkspace() {
   const [generationLaunchingIds, setGenerationLaunchingIds] = useState<string[]>([])
   const [conversationOutboundPending, setConversationOutboundPending] = useState(false)
   const [conversationNotice, setConversationNotice] = useState<WorkspaceConversationNotice | null>(null)
+  const [initialProductDocumentOpen, setInitialProductDocumentOpen] = useState(false)
   const [conversationOperations, setConversationOperations] = useState<Partial<Record<EditorConversation, FunctionConversationOperation>>>({})
   const [editorSessionNonce, setEditorSessionNonce] = useState(0)
   const [modelOptions, setModelOptions] = useState<AgentModelOption[]>([])
@@ -513,6 +517,9 @@ export function FuncOperationWorkspace() {
   })
 
   const activeConversationOperation = conversationOperations[resolvedEditorConversation] || null
+  const initialConversationRequired = isDefaultMessagesRequesting
+    || !messages.some((item) => item.message.role === 'user')
+  const initialConversationPlaceholder = getInitialConversationPlaceholder(resolvedEditorConversation)
   const activeConversationTodoTasks = useMemo(() => {
     if (!activeConversationOperation?.id) {
       return []
@@ -721,6 +728,7 @@ export function FuncOperationWorkspace() {
     chatDispatchInFlightRef.current = false
     startGenerationInFlightRef.current = false
     setPreviewError(null)
+    setInitialProductDocumentOpen(false)
     loadedDraftKeyRef.current = ''
     loadedCodeStateKeyRef.current = ''
     handledOperationStateRef.current.clear()
@@ -902,7 +910,11 @@ export function FuncOperationWorkspace() {
         targetFunction,
         'generation',
         buildGeneratedAppBuilderPrompt(targetFunction, targetApp, publicConfigCatalog),
-        { step: 'code', forceNewOperation: true },
+        {
+          step: 'code',
+          forceNewOperation: true,
+          input: { content: '', messageParts: [buildFunctionOperationBootstrapPart('generation', targetFunction, targetFunction.codeStale)] },
+        },
       )
       if (!queued) {
         setGenerationLaunchingIds((current) => current.filter((id) => id !== functionItem.id))
@@ -1052,12 +1064,20 @@ export function FuncOperationWorkspace() {
     })
   }
 
-  async function handleGenerateProductDoc(functionItem: OperationFunction) {
-    await queueConversationRequest(functionItem, 'product', buildProductDocPrompt(functionItem, publicConfigCatalog), {
+  async function handleGenerateProductDoc(functionItem: OperationFunction, referenceParts: MessagePart[] = []): Promise<boolean> {
+    const queued = await queueConversationRequest(functionItem, 'product', buildProductDocPrompt(functionItem, publicConfigCatalog), {
       step: 'product',
       workflowStage: FUNCTION_WORKFLOW_STAGE.productDoc,
       forceNewOperation: true,
+      input: {
+        content: '',
+        messageParts: [buildFunctionOperationBootstrapPart('product', functionItem), ...referenceParts],
+      },
     })
+    if (queued) {
+      setInitialProductDocumentOpen(false)
+    }
+    return queued
   }
 
   async function handleGenerateTechnicalDoc(functionItem: OperationFunction) {
@@ -1069,6 +1089,7 @@ export function FuncOperationWorkspace() {
       step: 'technical',
       workflowStage: FUNCTION_WORKFLOW_STAGE.technicalDoc,
       forceNewOperation: true,
+      input: { content: '', messageParts: [buildFunctionOperationBootstrapPart('technical', functionItem, functionItem.technicalStale)] },
     })
   }
 
@@ -1404,7 +1425,7 @@ export function FuncOperationWorkspace() {
         navigate(buildFuncEditorPath(functionItem.id, 'product'))
         setEditorStep('product')
         setEditorConversation('product')
-        await handleGenerateProductDoc(functionItem)
+        setInitialProductDocumentOpen(true)
         return
       case 'adopt_product_doc':
         await handleApplyDraftDocument(functionItem, 'product')
@@ -1459,6 +1480,10 @@ export function FuncOperationWorkspace() {
   }
 
   async function handleRefreshAndPreview(functionItem: OperationFunction) {
+    if (functionItem.codeStale) {
+      await handleStartGenerateFunction(functionItem)
+      return
+    }
     if (previewPreparingRef.current) {
       return
     }
@@ -1717,6 +1742,10 @@ export function FuncOperationWorkspace() {
     if (!activeAdminFunction) {
       return
     }
+    if (initialConversationRequired) {
+      setError(getInitialConversationPlaceholder(resolvedEditorConversation))
+      return
+    }
     void queueConversationRequest(activeAdminFunction, resolvedEditorConversation, params.content, { input: params })
   }
 
@@ -1736,6 +1765,13 @@ export function FuncOperationWorkspace() {
       {resolvedViewMode === 'admin' ? renderAdmin() : renderPublished()}
       {error ? <p className="error-banner func-error inline-error">{error}</p> : null}
       {renderCreateModal()}
+      <InitialProductDocumentModal
+        open={initialProductDocumentOpen}
+        functionName={activeAdminFunction?.name || ''}
+        loading={isRequesting || conversationOutboundPending}
+        onCancel={() => setInitialProductDocumentOpen(false)}
+        onStart={(attachments) => activeAdminFunction ? handleGenerateProductDoc(activeAdminFunction, attachments) : Promise.resolve(false)}
+      />
     </main>
   )
 
@@ -2011,6 +2047,8 @@ export function FuncOperationWorkspace() {
         messages={messages}
         isRequesting={isRequesting}
         isDefaultMessagesRequesting={isDefaultMessagesRequesting}
+        initialConversationRequired={initialConversationRequired}
+        initialConversationPlaceholder={initialConversationPlaceholder}
         activeSessionId={activeSessionId}
         conversationOutboundPending={conversationOutboundPending}
         conversationNotice={activeConversationNotice}
@@ -2287,14 +2325,14 @@ export function FuncOperationWorkspace() {
     if (!action) {
       return null
     }
-    if (action === 'generate_product_doc' && !canGenerateProductDoc(functionItem)) {
+    if (action === 'generate_product_doc' && (!canGenerateProductDoc(functionItem) || !initialConversationRequired)) {
       return null
     }
     if (action === 'generate_technical_doc' && !canGenerateTechnicalDoc(functionItem)) {
       return null
     }
     if (action === 'generate_page' && (
-      hasGenerationConversationStarted(functionItem, openedGenerationIds)
+      isGenerationOperationRunning(functionItem)
       || generationLaunchingIds.includes(functionItem.id)
     )) {
       return null
@@ -2305,9 +2343,10 @@ export function FuncOperationWorkspace() {
     if (action === 'adopt_technical_doc' && !canShowAdoptDraftButton(functionItem, 'technical')) {
       return null
     }
-    const primaryLabel = getNextActionLabel(action)
+    const primaryLabel = getNextActionLabel(action, functionItem)
     const launching = generationLaunchingIds.includes(functionItem.id)
     const loading = isRequesting
+      || isDefaultMessagesRequesting
       || savingFunctionId === functionItem.id
       || previewPreparingId === functionItem.id
       || statusUpdatingId === functionItem.id
@@ -2378,7 +2417,7 @@ export function FuncOperationWorkspace() {
                   ? '页面正在生成中，完成后可在此预览。'
                   : '请先完成产品方案和技术方案，再生成页面。'}
               />
-              {!hasGenerationConversationStarted(functionItem, openedGenerationIds) ? (
+              {!hasGenerationConversationStarted(functionItem, openedGenerationIds) && !isGenerationOperationRunning(functionItem) ? (
                 <Button type="primary" icon={<RocketOutlined />} onClick={() => void handleReadinessAction(functionItem, 'generate_page')}>
                   生成页面
                 </Button>
@@ -2445,6 +2484,11 @@ export function FuncOperationWorkspace() {
       functionItem.workflowStage === FUNCTION_WORKFLOW_STAGE.codeGeneration ||
       functionItem.workflowStage === FUNCTION_WORKFLOW_STAGE.codeGenerated,
     )
+  }
+
+  function isGenerationOperationRunning(functionItem: OperationFunction) {
+    const operation = conversationOperations.generation
+    return operation?.functionId === functionItem.id && operation.state === 'running'
   }
 
   function isCodeGenerationPending(functionItem: OperationFunction) {
@@ -2708,6 +2752,18 @@ function getDefaultConversation(functionItem: OperationFunction | null | undefin
   }
 }
 
+function getInitialConversationPlaceholder(conversation: EditorConversation): string {
+  switch (conversation) {
+    case 'technical':
+      return '请先点击“生成技术方案”开始本次技术方案生成'
+    case 'generation':
+      return '请先点击“生成页面”开始本次页面生成'
+    case 'product':
+    default:
+      return '请先点击“生成产品方案”添加参考资料或直接开始生成'
+  }
+}
+
 function buildProductDocPrompt(functionItem: OperationFunction, publicConfigs: PublicConfig[]) {
   const description = functionItem.description.trim() || '暂无补充描述'
   return [
@@ -2720,6 +2776,28 @@ function buildProductDocPrompt(functionItem: OperationFunction, publicConfigs: P
   ].join('\n')
 }
 
+function buildFunctionOperationBootstrapPart(
+  conversation: FunctionOperationBootstrap['conversation'],
+  functionItem: OperationFunction,
+  regenerating = false,
+): MessagePart {
+  const titles: Record<FunctionOperationBootstrap['conversation'], string> = {
+    product: '生成产品方案',
+    technical: regenerating ? '重新生成技术方案' : '生成技术方案',
+    generation: regenerating ? '重新生成页面' : '生成页面',
+  }
+  const metadata: FunctionOperationBootstrap = {
+    conversation,
+    title: titles[conversation],
+    functionName: functionItem.name.trim() || '未命名功能',
+    description: functionItem.description.trim(),
+  }
+  return {
+    type: 'function_operation_bootstrap',
+    text: JSON.stringify(metadata),
+  }
+}
+
 function buildTechnicalDocPrompt(functionItem: OperationFunction, publicConfigs: PublicConfig[]) {
   const productDocPath = functionItem.productDocPath.trim() || getPublishedDocumentPath(functionItem, 'product')
   return [
@@ -2728,6 +2806,9 @@ function buildTechnicalDocPrompt(functionItem: OperationFunction, publicConfigs:
     `产品文档（applied）：${productDocPath}`,
     `draft 文件：${getDraftDocumentPath(functionItem, 'technical')}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
+    functionItem.technicalStale
+      ? '本次是一次完整的技术方案重生成。请以最新已采用产品文档为唯一业务依据，覆盖旧技术方案草稿，不要沿用已失效的设计结论。'
+      : '本次请基于当前已采用的产品文档生成完整技术方案。',
     '先使用 TaskCreate 和 TaskUpdate 制定并执行本次请求的任务列表。实现约束不清时使用 AskUserQuestion；只有完整技术文档已写入 draft 文件后，才调用 submit_technical_document_draft 工具。不要输出 XML 或文本状态标签。',
   ].join('\n')
 }
@@ -2747,6 +2828,9 @@ function buildGeneratedAppBuilderPrompt(functionItem: OperationFunction, app: Ge
     `appDir：${appFolder}`,
     `tablePrefix：${tablePrefix}`,
     buildPublicConfigCatalogPrompt(publicConfigs),
+    functionItem.codeStale
+      ? '本次是一次完整的页面重生成。请以最新已采用研发文档为唯一实现依据，替换旧页面实现，不要保留已失效的字段、接口或业务流程。'
+      : '本次请基于当前已采用的产品方案和研发文档生成完整页面。',
     '按钮权限要求：manifest.actions 必须包含所有会触发新增、编辑、删除、归档、分配、审批、保存等状态变更的 action；列表、详情、查询等只读 action 不写入 manifest.actions。',
     '按钮展示要求：所有会触发 manifest.actions 中 action 的按钮、菜单项、弹窗按钮、详情页按钮、子模块按钮，都必须在渲染前调用 `context.can(actionKey)` 或透传后的同等 can 方法判断；无权限时不要渲染按钮。',
     '嵌套界面要求：如果按钮在 modal、drawer、tab、子表格、详情面板等内部组件里，必须把 can 方法从 render(context) 一路透传进去，禁止只在外层列表做权限判断。',

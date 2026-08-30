@@ -42,7 +42,6 @@ export function hasGenerationConversationStarted(
   openedGenerationIds: string[],
 ): boolean {
   return openedGenerationIds.includes(functionItem.id)
-    || functionItem.workflowStage === FUNCTION_WORKFLOW_STAGE_CODE_GENERATION
 }
 
 export function hasGeneratedPage(functionItem: OperationFunction): boolean {
@@ -102,7 +101,7 @@ export function resolveStepPrimaryAction(
       return canGenerateTechnicalDoc(functionItem) ? 'generate_technical_doc' : ''
     case 'code':
       if (functionItem.codeStale) {
-        return hasGeneratedPage(functionItem) ? 'refresh_and_preview' : generationStarted ? '' : 'generate_page'
+        return 'generate_page'
       }
       if (shouldShowRefreshAndPreview(functionItem, generationPreviewReadyIds)) {
         return 'refresh_and_preview'
@@ -205,7 +204,13 @@ function buildFallbackReadiness(functionItem: OperationFunction): FunctionReadin
   return readiness
 }
 
-export function getNextActionLabel(action: FunctionNextAction | ''): string {
+export function getNextActionLabel(action: FunctionNextAction | '', functionItem?: OperationFunction): string {
+  if (action === 'generate_technical_doc' && functionItem?.technicalStale) {
+    return '重新生成技术方案'
+  }
+  if (action === 'generate_page' && functionItem?.codeStale) {
+    return '重新生成页面'
+  }
   if (!action) {
     return '继续'
   }

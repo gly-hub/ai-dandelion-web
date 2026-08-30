@@ -51,6 +51,7 @@ interface FunctionGenerationConsoleProps {
   isRequesting: boolean
   isDefaultMessagesRequesting: boolean
   composerDisabled: boolean
+  composerDisabledPlaceholder?: string
   notice?: ConversationNotice | null
   onNoticeAction?: () => void
   composerLoading?: boolean
@@ -142,6 +143,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
   disabled,
   loading,
   placeholder,
+  disabledPlaceholder,
   conversationKey,
   selectedModel,
   onRequest,
@@ -150,6 +152,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
   disabled: boolean
   loading: boolean
   placeholder: string
+  disabledPlaceholder?: string
   conversationKey: string
   selectedModel: AgentModelOption | null
   onRequest: (params: ChatInput) => void
@@ -287,7 +290,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
           onRequest({ content, messageParts: attachments })
           clearAttachments()
         }}
-        placeholder={placeholder}
+        placeholder={disabledPlaceholder || placeholder}
         autoSize={{ minRows: 3, maxRows: 8 }}
         className="chat-sender"
         suffix={false}
@@ -349,6 +352,7 @@ export const FunctionGenerationConsole = memo(function FunctionGenerationConsole
   isRequesting,
   isDefaultMessagesRequesting,
   composerDisabled,
+  composerDisabledPlaceholder,
   notice,
   onNoticeAction,
   composerLoading,
@@ -412,6 +416,7 @@ export const FunctionGenerationConsole = memo(function FunctionGenerationConsole
             disabled={composerDisabled}
             loading={senderLoading}
             placeholder={placeholder}
+            disabledPlaceholder={composerDisabledPlaceholder}
             conversationKey={`${conversation}:${editorStep}`}
             selectedModel={selectedModel}
             onRequest={onRequest}

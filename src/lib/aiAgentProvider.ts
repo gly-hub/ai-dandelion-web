@@ -160,6 +160,9 @@ function normalizeMessageParts(parts?: MessagePart[]) {
     if (part.type === 'text') {
       return Boolean(part.text)
     }
+    if (part.type === 'function_operation_bootstrap') {
+      return Boolean(part.text)
+    }
     if (part.type === 'skill') {
       return Boolean(part.skillId && part.label)
     }
