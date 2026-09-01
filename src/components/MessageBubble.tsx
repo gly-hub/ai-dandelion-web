@@ -1,8 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CopyOutlined, DownloadOutlined, DownOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, CodeOutlined, CopyOutlined, DownloadOutlined, DownOutlined, FileTextOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
 import { Button, Checkbox, Image, Input, Modal, Radio } from 'antd'
 import { FileCard } from '@ant-design/x'
-import type { ChatMessage, ChatStatus, MessagePart } from '../types'
+import type { ChatMessage, ChatStatus, FunctionOperationBootstrap, MessagePart } from '../types'
 import { MarkdownBlock } from './MarkdownBlock'
 import { getUploadDownloadURL, submitAskUserQuestion, submitToolPermission } from '../lib/api'
 
@@ -23,6 +23,7 @@ export function MessageBubble({ message, status, messageKey, sessionId }: Messag
   if (message.role === 'user') {
     const attachments = parts.filter(isUserAttachmentPart)
     const contentParts = parts.filter((part) => !isUserAttachmentPart(part))
+    const bootstrap = findFunctionOperationBootstrap(contentParts)
     const hasMessageContent = contentParts.length > 0 || attachments.length === 0 || Boolean(message.content.trim())
     return (
       <div className="message-bubble-shell user">
@@ -33,7 +34,7 @@ export function MessageBubble({ message, status, messageKey, sessionId }: Messag
             </div>
           </Image.PreviewGroup>
         ) : null}
-        {hasMessageContent ? (
+        {bootstrap ? <FunctionOperationBootstrapCard bootstrap={bootstrap} /> : hasMessageContent ? (
           <div className="user-message-content">{renderUserParts(contentParts, message.content, messageKey)}</div>
         ) : null}
         <time>{formatTime(message.createdAt)}</time>
@@ -129,6 +130,68 @@ export function MessageBubble({ message, status, messageKey, sessionId }: Messag
       </div>
     </div>
   )
+}
+
+function FunctionOperationBootstrapCard({ bootstrap }: { bootstrap: FunctionOperationBootstrap }) {
+  const Icon = bootstrap.conversation === 'product'
+    ? FileTextOutlined
+    : bootstrap.conversation === 'technical'
+      ? CodeOutlined
+      : CheckCircleOutlined
+
+  return (
+    <div className="function-operation-bootstrap-card">
+      <div className="function-operation-bootstrap-header">
+        <span className="function-operation-bootstrap-icon" aria-hidden="true"><Icon /></span>
+        <div className="function-operation-bootstrap-heading">
+          <strong>{bootstrap.title}</strong>
+          <span>功能生成</span>
+        </div>
+      </div>
+      <div className="function-operation-bootstrap-details">
+        <div className="function-operation-bootstrap-row">
+          <span>功能</span>
+          <strong>{bootstrap.functionName}</strong>
+        </div>
+        {bootstrap.description ? (
+          <div className="function-operation-bootstrap-description">
+            <span>需求描述</span>
+            <p>{bootstrap.description}</p>
+          </div>
+        ) : null}
+      </div>
+      <div className="function-operation-bootstrap-status">
+        <CheckCircleOutlined />
+        <span>已发起</span>
+      </div>
+    </div>
+  )
+}
+
+function findFunctionOperationBootstrap(parts: MessagePart[]): FunctionOperationBootstrap | null {
+  const part = parts.find((item) => item.type === 'function_operation_bootstrap')
+  if (!part || part.type !== 'function_operation_bootstrap') {
+    return null
+  }
+  try {
+    const value = JSON.parse(part.text) as Partial<FunctionOperationBootstrap>
+    if (
+      (value.conversation !== 'product' && value.conversation !== 'technical' && value.conversation !== 'generation') ||
+      typeof value.title !== 'string' ||
+      typeof value.functionName !== 'string' ||
+      typeof value.description !== 'string'
+    ) {
+      return null
+    }
+    return {
+      conversation: value.conversation,
+      title: value.title.trim(),
+      functionName: value.functionName.trim(),
+      description: value.description.trim(),
+    }
+  } catch {
+    return null
+  }
 }
 
 function ThinkingBlock({ part }: { part: Extract<MessagePart, { type: 'thinking' }> }) {

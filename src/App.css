@@ -968,6 +968,101 @@ body {
   box-shadow: 0 4px 12px rgba(30, 41, 59, 0.03);
 }
 
+.function-operation-bootstrap-card {
+  width: min(100%, 31rem);
+  overflow: hidden;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.98);
+  box-shadow: 0 6px 18px rgba(30, 41, 59, 0.06);
+  text-align: left;
+}
+
+.function-operation-bootstrap-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  background: rgba(239, 246, 255, 0.9);
+}
+
+.function-operation-bootstrap-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+  font-size: 16px;
+}
+
+.function-operation-bootstrap-heading {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.function-operation-bootstrap-heading strong {
+  overflow-wrap: anywhere;
+  color: var(--ink-deep);
+  font-size: 14px;
+}
+
+.function-operation-bootstrap-heading span,
+.function-operation-bootstrap-row > span,
+.function-operation-bootstrap-description > span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.function-operation-bootstrap-details {
+  display: grid;
+  gap: 10px;
+  padding: 13px 15px;
+}
+
+.function-operation-bootstrap-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.function-operation-bootstrap-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-deep);
+  font-size: 13px;
+}
+
+.function-operation-bootstrap-description {
+  display: grid;
+  gap: 4px;
+}
+
+.function-operation-bootstrap-description p {
+  max-height: 7.2em;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink-deep);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.function-operation-bootstrap-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 15px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  color: #15803d;
+  font-size: 12px;
+}
+
 .user-message-attachments {
   display: flex;
   flex-wrap: wrap;
@@ -4029,4 +4124,42 @@ body {
   color: var(--platform-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.attachment-upload-status {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  color: var(--ant-color-error, #ff4d4f);
+}
+
+.attachment-upload-status-label {
+  transition: opacity 120ms ease;
+}
+
+.attachment-upload-status-retry {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.attachment-upload-status-retry:hover,
+.attachment-upload-status-retry:focus-visible {
+  text-decoration: underline;
+}
+
+.ant-file-card:hover .attachment-upload-status-label,
+.ant-file-card:focus-within .attachment-upload-status-label {
+  display: none;
+}
+
+.ant-file-card:hover .attachment-upload-status-retry,
+.ant-file-card:focus-within .attachment-upload-status-retry {
+  display: inline-flex;
 }

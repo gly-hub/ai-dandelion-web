@@ -74,6 +74,10 @@ export type MessagePart =
       text: string
     }
   | {
+      type: 'function_operation_bootstrap'
+      text: string
+    }
+  | {
       type: 'skill'
       skillId: string
       label: string
@@ -153,6 +157,15 @@ export interface ChatMessage {
   operationId?: string
   terminalStatus?: string
   terminalReason?: string
+}
+
+export type FunctionOperationConversation = 'product' | 'technical' | 'generation'
+
+export interface FunctionOperationBootstrap {
+  conversation: FunctionOperationConversation
+  title: string
+  functionName: string
+  description: string
 }
 
 export interface AgentEvent {

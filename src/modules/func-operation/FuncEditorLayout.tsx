@@ -47,6 +47,8 @@ interface FuncEditorLayoutProps {
   messages: ChatMessageInfo[]
   isRequesting: boolean
   isDefaultMessagesRequesting: boolean
+  initialConversationRequired: boolean
+  initialConversationPlaceholder?: string
   activeSessionId: string
   conversationOutboundPending: boolean
   conversationNotice: ConversationNotice | null
@@ -81,6 +83,8 @@ export function FuncEditorLayout(props: FuncEditorLayoutProps) {
     messages,
     isRequesting,
     isDefaultMessagesRequesting,
+    initialConversationRequired,
+    initialConversationPlaceholder,
     activeSessionId,
     conversationOutboundPending,
     conversationNotice,
@@ -277,7 +281,8 @@ export function FuncEditorLayout(props: FuncEditorLayoutProps) {
                     messages={messages}
                     isRequesting={isRequesting}
                     isDefaultMessagesRequesting={isDefaultMessagesRequesting}
-                    composerDisabled={!activeSessionId}
+                    composerDisabled={!activeSessionId || initialConversationRequired}
+                    composerDisabledPlaceholder={initialConversationRequired ? initialConversationPlaceholder : undefined}
                     composerLoading={
                       isRequesting ||
                       conversationOutboundPending ||
