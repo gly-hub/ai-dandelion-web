@@ -164,6 +164,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
   const [attachments, setAttachments] = useState<MessagePart[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PendingGenerationAttachment[]>([])
   const [uploadingAttachmentCount, setUploadingAttachmentCount] = useState(0)
+  const [uploadError, setUploadError] = useState('')
   const pendingAttachmentsRef = useRef<PendingGenerationAttachment[]>([])
   const uploadSeedRef = useRef(0)
   const dropContainerRef = useRef<HTMLDivElement | null>(null)
@@ -189,6 +190,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
       attachment.uid === uid ? { ...attachment, percent: 0, status: 'uploading' } : attachment
     )))
     setUploadingAttachmentCount((count) => count + 1)
+    setUploadError('')
     try {
       const uploaded = await uploadChatFile(file, (percent) => {
         setPendingAttachments((current) => current.map((attachment) => (
@@ -218,7 +220,8 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
           ? { ...attachment, fileUuid: uploaded.uuid, percent: 100, status: 'done' }
           : attachment
       )))
-    } catch {
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '附件上传失败')
       setPendingAttachments((current) => current.map((attachment) => (
         attachment.uid === uid ? { ...attachment, status: 'error' } : attachment
       )))
@@ -273,6 +276,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
     pendingAttachmentsRef.current = []
     setPendingAttachments([])
     setAttachments([])
+    setUploadError('')
   }
 
   function handleComposerPaste(event: ClipboardEvent<HTMLDivElement>) {
@@ -298,7 +302,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
         value={draft}
         onChange={setDraft}
         loading={loading}
-        disabled={disabled}
+        disabled={disabled || uploadingAttachmentCount > 0}
         onCancel={onAbort}
         onSubmit={(value) => {
           if (uploadingAttachmentCount > 0) {
@@ -316,17 +320,18 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
         autoSize={{ minRows: 3, maxRows: 8 }}
         className="chat-sender"
         suffix={false}
-        header={pendingAttachments.length > 0 ? (
+        header={pendingAttachments.length > 0 || uploadError ? (
         <>
           {pendingAttachments.length > 0 ? (
             <Attachments
               items={attachmentItems}
               maxCount={attachmentItems.length}
               onRemove={(file) => removeAttachment(String(file.uid))}
-              disabled={disabled}
+              disabled={disabled || uploadingAttachmentCount > 0}
               rootClassName="generation-attachment-list"
             />
           ) : null}
+          {uploadError ? <div className="generation-attachment-error" role="alert">{uploadError}</div> : null}
         </>
         ) : null}
         footer={(_actions, { components }) => (

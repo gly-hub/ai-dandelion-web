@@ -4565,6 +4565,12 @@
   gap: 6px;
 }
 
+.console-app .generation-console .generation-attachment-error {
+  padding: 4px 12px 0;
+  color: var(--console-danger, #dc2626);
+  font-size: 12px;
+}
+
 .console-app .chat-slash-command-panel {
   position: absolute;
   left: 14px;
