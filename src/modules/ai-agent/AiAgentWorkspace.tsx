@@ -30,6 +30,7 @@ import { useNavMenus } from '../../contexts/NavMenuContext'
 import { AgentMySpacePanel } from './AgentMySpacePanel'
 import { AgentToolboxPanel } from './AgentToolboxPanel'
 import { MessageBubble } from '../../components/MessageBubble'
+import { AttachmentUploadStatus } from '../../components/AttachmentUploadStatus'
 import { ChatModelSelector, readAutoModelEnabled } from '../../components/ChatModelSelector'
 import { SidebarSearchInput } from '../../components/SidebarSearchInput'
 import { TodoDock } from '../../components/TodoDock'
@@ -98,6 +99,7 @@ interface BubblePayload {
 
 interface PendingChatAttachment {
   uid: string
+  file: File
   fileUuid?: string
   name: string
   size: number
@@ -105,7 +107,7 @@ interface PendingChatAttachment {
   url?: string
   thumbUrl?: string
   percent: number
-  status: 'uploading' | 'done'
+  status: 'uploading' | 'done' | 'error'
 }
 
 interface AiAgentWorkspaceProps {
@@ -859,27 +861,11 @@ export function AiAgentWorkspace({
     onRequest({ content, extra, messageParts })
   }
 
-  async function handleAttachmentUpload(file: File) {
-    if (file.size > 16 * 1024 * 1024) {
-      setError('聊天附件最大支持 16 MiB')
-      return false
-    }
-    const isImage = file.type.startsWith('image/')
-    const pendingAttachmentId = `upload-${Date.now()}-${tokenSeedRef.current++}`
-    const localPreviewURL = isImage ? URL.createObjectURL(file) : undefined
-    setPendingChatAttachments((current) => [...current, {
-      uid: pendingAttachmentId,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      url: localPreviewURL,
-      thumbUrl: localPreviewURL,
-      percent: 0,
-      status: 'uploading',
-    }])
-    setError('')
+  async function uploadAttachment(file: File, pendingAttachmentId: string) {
+    setPendingChatAttachments((current) => current.map((attachment) => (
+      attachment.uid === pendingAttachmentId ? { ...attachment, percent: 0, status: 'uploading' } : attachment
+    )))
     setUploadingAttachment(true)
-    let uploadSucceeded = false
     try {
       const uploaded = await uploadChatFile(file, (percent) => {
         setPendingChatAttachments((current) => current.map((attachment) => (
@@ -897,19 +883,42 @@ export function AiAgentWorkspace({
           ? { ...attachment, fileUuid: uploaded.uuid, percent: 100, status: 'done' }
           : attachment
       )))
-      uploadSucceeded = true
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : '附件上传失败')
+    } catch {
+      setPendingChatAttachments((current) => current.map((attachment) => (
+        attachment.uid === pendingAttachmentId ? { ...attachment, status: 'error' } : attachment
+      )))
     } finally {
-      if (!uploadSucceeded) {
-        setPendingChatAttachments((current) => current.filter((attachment) => attachment.uid !== pendingAttachmentId))
-        if (localPreviewURL) {
-          URL.revokeObjectURL(localPreviewURL)
-        }
-      }
       setUploadingAttachment(false)
     }
+  }
+
+  async function handleAttachmentUpload(file: File) {
+    if (file.size > 16 * 1024 * 1024) {
+      return false
+    }
+    const isImage = file.type.startsWith('image/')
+    const pendingAttachmentId = `upload-${Date.now()}-${tokenSeedRef.current++}`
+    const localPreviewURL = isImage ? URL.createObjectURL(file) : undefined
+    setPendingChatAttachments((current) => [...current, {
+      uid: pendingAttachmentId,
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      url: localPreviewURL,
+      thumbUrl: localPreviewURL,
+      percent: 0,
+      status: 'uploading',
+    }])
+    await uploadAttachment(file, pendingAttachmentId)
     return false
+  }
+
+  function retryAttachment(uid: string) {
+    const attachment = pendingChatAttachments.find((item) => item.uid === uid)
+    if (attachment && !uploadingAttachment) {
+      void uploadAttachment(attachment.file, uid)
+    }
   }
 
   function handleComposerPaste(event: ClipboardEvent<HTMLElement>) {
@@ -921,7 +930,13 @@ export function AiAgentWorkspace({
     void handleAttachmentUpload(file)
   }
 
-  const uploadedAttachmentItems = pendingChatAttachments
+  const uploadedAttachmentItems = pendingChatAttachments.map((attachment) => ({
+    ...attachment,
+    tabIndex: attachment.status === 'error' ? 0 : undefined,
+    description: attachment.status === 'error'
+      ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} disabled={uploadingAttachment} />
+      : undefined,
+  }))
 
   function clearComposerAttachments() {
     pendingChatAttachments.forEach((attachment) => {

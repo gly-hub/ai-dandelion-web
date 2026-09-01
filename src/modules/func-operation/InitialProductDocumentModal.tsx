@@ -3,11 +3,13 @@ import { InboxOutlined, PaperClipOutlined } from '@ant-design/icons'
 import { Button, Modal } from 'antd'
 import { Attachments } from '@ant-design/x'
 import type { MessagePart } from '../../types'
+import { AttachmentUploadStatus } from '../../components/AttachmentUploadStatus'
 import { getClipboardImageFile } from '../../lib/clipboardAttachment'
 import { uploadChatFile } from '../../lib/api'
 
 interface PendingReferenceAttachment {
   uid: string
+  file: File
   fileUuid?: string
   name: string
   size: number
@@ -15,7 +17,7 @@ interface PendingReferenceAttachment {
   url?: string
   thumbUrl?: string
   percent: number
-  status: 'uploading' | 'done'
+  status: 'uploading' | 'done' | 'error'
 }
 
 interface InitialProductDocumentModalProps {
@@ -42,7 +44,6 @@ export function InitialProductDocumentModal({
   const [attachments, setAttachments] = useState<MessagePart[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PendingReferenceAttachment[]>([])
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
-  const [uploadError, setUploadError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const pendingAttachmentsRef = useRef<PendingReferenceAttachment[]>([])
   const uploadSeedRef = useRef(0)
@@ -62,25 +63,10 @@ export function InitialProductDocumentModal({
     }
   }, [open])
 
-  async function handleAttachmentUpload(file: File) {
-    if (file.size > 16 * 1024 * 1024) {
-      setUploadError('参考资料最大支持 16 MiB')
-      return false
-    }
-    const isImage = file.type.startsWith('image/')
-    const uid = `product-reference-${Date.now()}-${uploadSeedRef.current++}`
-    const localPreviewURL = isImage ? URL.createObjectURL(file) : undefined
-    setPendingAttachments((current) => [...current, {
-      uid,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      url: localPreviewURL,
-      thumbUrl: localPreviewURL,
-      percent: 0,
-      status: 'uploading',
-    }])
-    setUploadError('')
+  async function uploadAttachment(file: File, uid: string) {
+    setPendingAttachments((current) => current.map((attachment) => (
+      attachment.uid === uid ? { ...attachment, percent: 0, status: 'uploading' } : attachment
+    )))
     setUploadingAttachment(true)
     try {
       const uploaded = await uploadChatFile(file, (percent) => {
@@ -111,16 +97,42 @@ export function InitialProductDocumentModal({
           ? { ...attachment, fileUuid: uploaded.uuid, percent: 100, status: 'done' }
           : attachment
       )))
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : '附件上传失败')
-      setPendingAttachments((current) => current.filter((attachment) => attachment.uid !== uid))
-      if (localPreviewURL) {
-        URL.revokeObjectURL(localPreviewURL)
-      }
+    } catch {
+      setPendingAttachments((current) => current.map((attachment) => (
+        attachment.uid === uid ? { ...attachment, status: 'error' } : attachment
+      )))
     } finally {
       setUploadingAttachment(false)
     }
+  }
+
+  async function handleAttachmentUpload(file: File) {
+    if (file.size > 16 * 1024 * 1024) {
+      return false
+    }
+    const isImage = file.type.startsWith('image/')
+    const uid = `product-reference-${Date.now()}-${uploadSeedRef.current++}`
+    const localPreviewURL = isImage ? URL.createObjectURL(file) : undefined
+    setPendingAttachments((current) => [...current, {
+      uid,
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      url: localPreviewURL,
+      thumbUrl: localPreviewURL,
+      percent: 0,
+      status: 'uploading',
+    }])
+    await uploadAttachment(file, uid)
     return false
+  }
+
+  function retryAttachment(uid: string) {
+    const attachment = pendingAttachments.find((item) => item.uid === uid)
+    if (attachment && !uploadingAttachment) {
+      void uploadAttachment(attachment.file, uid)
+    }
   }
 
   function removeAttachment(uid: string) {
@@ -140,7 +152,6 @@ export function InitialProductDocumentModal({
     pendingAttachmentsRef.current = []
     setPendingAttachments([])
     setAttachments([])
-    setUploadError('')
   }
 
   function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
@@ -210,14 +221,19 @@ export function InitialProductDocumentModal({
         </section>
         {pendingAttachments.length > 0 ? (
           <Attachments
-            items={pendingAttachments}
+            items={pendingAttachments.map((attachment) => ({
+              ...attachment,
+              tabIndex: attachment.status === 'error' ? 0 : undefined,
+              description: attachment.status === 'error'
+                ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} disabled={uploadingAttachment} />
+                : undefined,
+            }))}
             maxCount={pendingAttachments.length}
             onRemove={(file) => removeAttachment(String(file.uid))}
             disabled={loading || submitting || uploadingAttachment}
             rootClassName="initial-product-document-attachment-list"
           />
         ) : null}
-        {uploadError ? <div className="initial-product-document-upload-error" role="alert">{uploadError}</div> : null}
         <p className="initial-product-document-function">将为“{functionName || '当前功能'}”生成产品方案</p>
       </div>
     </Modal>

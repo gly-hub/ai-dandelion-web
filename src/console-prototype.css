@@ -4517,12 +4517,6 @@
   color: var(--console-blue);
 }
 
-.console-app .generation-console .generation-attachment-error {
-  padding: 4px 12px 0;
-  color: var(--console-danger, #dc2626);
-  font-size: 12px;
-}
-
 .initial-product-document-modal {
   position: relative;
   display: grid;
@@ -4569,11 +4563,6 @@
 
 .initial-product-document-attachment-list .ant-file-card-list {
   gap: 6px;
-}
-
-.initial-product-document-upload-error {
-  color: var(--console-danger, #dc2626);
-  font-size: 12px;
 }
 
 .console-app .chat-slash-command-panel {

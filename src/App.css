@@ -4125,3 +4125,41 @@ body {
   font-size: 12px;
   white-space: nowrap;
 }
+
+.attachment-upload-status {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  color: var(--ant-color-error, #ff4d4f);
+}
+
+.attachment-upload-status-label {
+  transition: opacity 120ms ease;
+}
+
+.attachment-upload-status-retry {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.attachment-upload-status-retry:hover,
+.attachment-upload-status-retry:focus-visible {
+  text-decoration: underline;
+}
+
+.ant-file-card:hover .attachment-upload-status-label,
+.ant-file-card:focus-within .attachment-upload-status-label {
+  display: none;
+}
+
+.ant-file-card:hover .attachment-upload-status-retry,
+.ant-file-card:focus-within .attachment-upload-status-retry {
+  display: inline-flex;
+}

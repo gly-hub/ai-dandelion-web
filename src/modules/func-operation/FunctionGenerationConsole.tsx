@@ -3,6 +3,7 @@ import { Alert, Button, Spin, Tag } from 'antd'
 import { Attachments, Bubble, Sender, Welcome } from '@ant-design/x'
 import { InboxOutlined, PaperClipOutlined } from '@ant-design/icons'
 import { MessageBubble } from '../../components/MessageBubble'
+import { AttachmentUploadStatus } from '../../components/AttachmentUploadStatus'
 import { TodoDock } from '../../components/TodoDock'
 import { buildBubbleItemKey } from '../../lib/chatBubble'
 import { uploadChatFile } from '../../lib/api'
@@ -65,6 +66,7 @@ interface FunctionGenerationConsoleProps {
 
 interface PendingGenerationAttachment {
   uid: string
+  file: File
   fileUuid?: string
   name: string
   size: number
@@ -72,7 +74,7 @@ interface PendingGenerationAttachment {
   url?: string
   thumbUrl?: string
   percent: number
-  status: 'uploading' | 'done'
+  status: 'uploading' | 'done' | 'error'
 }
 
 function revokeAttachmentPreview(attachment: PendingGenerationAttachment) {
@@ -162,7 +164,6 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
   const [attachments, setAttachments] = useState<MessagePart[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PendingGenerationAttachment[]>([])
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
-  const [uploadError, setUploadError] = useState('')
   const pendingAttachmentsRef = useRef<PendingGenerationAttachment[]>([])
   const uploadSeedRef = useRef(0)
   const dropContainerRef = useRef<HTMLDivElement | null>(null)
@@ -183,25 +184,10 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
     pendingAttachmentsRef.current.forEach(revokeAttachmentPreview)
   }, [])
 
-  async function handleAttachmentUpload(file: File) {
-    if (file.size > 16 * 1024 * 1024) {
-      setUploadError('聊天附件最大支持 16 MiB')
-      return false
-    }
-    const isImage = file.type.startsWith('image/')
-    const uid = `generation-upload-${Date.now()}-${uploadSeedRef.current++}`
-    const localPreviewURL = isImage ? URL.createObjectURL(file) : undefined
-    setPendingAttachments((current) => [...current, {
-      uid,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      url: localPreviewURL,
-      thumbUrl: localPreviewURL,
-      percent: 0,
-      status: 'uploading',
-    }])
-    setUploadError('')
+  async function uploadAttachment(file: File, uid: string) {
+    setPendingAttachments((current) => current.map((attachment) => (
+      attachment.uid === uid ? { ...attachment, percent: 0, status: 'uploading' } : attachment
+    )))
     setUploadingAttachment(true)
     try {
       const uploaded = await uploadChatFile(file, (percent) => {
@@ -232,16 +218,42 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
           ? { ...attachment, fileUuid: uploaded.uuid, percent: 100, status: 'done' }
           : attachment
       )))
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : '附件上传失败')
-      setPendingAttachments((current) => current.filter((attachment) => attachment.uid !== uid))
-      if (localPreviewURL) {
-        URL.revokeObjectURL(localPreviewURL)
-      }
+    } catch {
+      setPendingAttachments((current) => current.map((attachment) => (
+        attachment.uid === uid ? { ...attachment, status: 'error' } : attachment
+      )))
     } finally {
       setUploadingAttachment(false)
     }
+  }
+
+  async function handleAttachmentUpload(file: File) {
+    if (file.size > 16 * 1024 * 1024) {
+      return false
+    }
+    const isImage = file.type.startsWith('image/')
+    const uid = `generation-upload-${Date.now()}-${uploadSeedRef.current++}`
+    const localPreviewURL = isImage ? URL.createObjectURL(file) : undefined
+    setPendingAttachments((current) => [...current, {
+      uid,
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      url: localPreviewURL,
+      thumbUrl: localPreviewURL,
+      percent: 0,
+      status: 'uploading',
+    }])
+    await uploadAttachment(file, uid)
     return false
+  }
+
+  function retryAttachment(uid: string) {
+    const attachment = pendingAttachments.find((item) => item.uid === uid)
+    if (attachment && !uploadingAttachment) {
+      void uploadAttachment(attachment.file, uid)
+    }
   }
 
   function removeAttachment(uid: string) {
@@ -261,7 +273,6 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
     pendingAttachmentsRef.current = []
     setPendingAttachments([])
     setAttachments([])
-    setUploadError('')
   }
 
   function handleComposerPaste(event: ClipboardEvent<HTMLDivElement>) {
@@ -272,6 +283,14 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
     event.preventDefault()
     void handleAttachmentUpload(file)
   }
+
+  const attachmentItems = pendingAttachments.map((attachment) => ({
+    ...attachment,
+    tabIndex: attachment.status === 'error' ? 0 : undefined,
+    description: attachment.status === 'error'
+      ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} disabled={uploadingAttachment} />
+      : undefined,
+  }))
 
   return (
     <div ref={dropContainerRef} className="generation-composer-shell" onPaste={handleComposerPaste}>
@@ -294,18 +313,17 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
         autoSize={{ minRows: 3, maxRows: 8 }}
         className="chat-sender"
         suffix={false}
-        header={pendingAttachments.length > 0 || uploadError ? (
+        header={pendingAttachments.length > 0 ? (
         <>
           {pendingAttachments.length > 0 ? (
             <Attachments
-              items={pendingAttachments}
-              maxCount={pendingAttachments.length}
+              items={attachmentItems}
+              maxCount={attachmentItems.length}
               onRemove={(file) => removeAttachment(String(file.uid))}
               disabled={disabled || uploadingAttachment}
               rootClassName="generation-attachment-list"
             />
           ) : null}
-          {uploadError ? <div className="generation-attachment-error" role="alert">{uploadError}</div> : null}
         </>
         ) : null}
         footer={(actions) => (
