@@ -151,7 +151,7 @@ export function AiAgentWorkspace({
   const [draft, setDraft] = useState('')
   const [chatAttachments, setChatAttachments] = useState<ChatMessage['parts']>([])
   const [pendingChatAttachments, setPendingChatAttachments] = useState<PendingChatAttachment[]>([])
-  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [uploadingAttachmentCount, setUploadingAttachmentCount] = useState(0)
   const [booting, setBooting] = useState(true)
   const [error, setError] = useState('')
   const [sessionKeyword, setSessionKeyword] = useState('')
@@ -833,6 +833,9 @@ export function AiAgentWorkspace({
   }
 
   async function handleSubmit(value?: string, slotConfig?: SlotConfigType[]) {
+    if (uploadingAttachmentCount > 0) {
+      return
+    }
     const content = normalizeSubmitContent(value, slotConfig, draft)
     const messageParts = [...buildUserMessagePartsFromSlots(slotConfig, content), ...chatAttachments]
     const extra = buildExtraFromMessageParts(messageParts)
@@ -865,7 +868,7 @@ export function AiAgentWorkspace({
     setPendingChatAttachments((current) => current.map((attachment) => (
       attachment.uid === pendingAttachmentId ? { ...attachment, percent: 0, status: 'uploading' } : attachment
     )))
-    setUploadingAttachment(true)
+    setUploadingAttachmentCount((count) => count + 1)
     try {
       const uploaded = await uploadChatFile(file, (percent) => {
         setPendingChatAttachments((current) => current.map((attachment) => (
@@ -888,7 +891,7 @@ export function AiAgentWorkspace({
         attachment.uid === pendingAttachmentId ? { ...attachment, status: 'error' } : attachment
       )))
     } finally {
-      setUploadingAttachment(false)
+      setUploadingAttachmentCount((count) => Math.max(0, count - 1))
     }
   }
 
@@ -916,14 +919,14 @@ export function AiAgentWorkspace({
 
   function retryAttachment(uid: string) {
     const attachment = pendingChatAttachments.find((item) => item.uid === uid)
-    if (attachment && !uploadingAttachment) {
+    if (attachment) {
       void uploadAttachment(attachment.file, uid)
     }
   }
 
   function handleComposerPaste(event: ClipboardEvent<HTMLElement>) {
     const file = getClipboardImageFile(event.clipboardData)
-    if (!file || booting || isRequesting || uploadingAttachment) {
+    if (!file || booting || isRequesting) {
       return
     }
     event.preventDefault()
@@ -934,7 +937,7 @@ export function AiAgentWorkspace({
     ...attachment,
     tabIndex: attachment.status === 'error' ? 0 : undefined,
     description: attachment.status === 'error'
-      ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} disabled={uploadingAttachment} />
+      ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} />
       : undefined,
   }))
 
@@ -1566,7 +1569,7 @@ export function AiAgentWorkspace({
                 onSubmit={(value, slotConfig) => void handleSubmit(value, slotConfig)}
                 onCancel={handleAbort}
                 loading={isRequesting}
-                disabled={booting || uploadingAttachment}
+                disabled={booting}
                 placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"
                 autoSize={{ minRows: compact ? 2 : 3, maxRows: embedded ? 7 : 8 }}
                 className={`chat-sender${selectedSkillIds.length > 0 || selectedFunctionSkillIds.length > 0 || selectedMCPIds.length > 0 ? ' has-selected-skill' : ''}`}
@@ -1577,11 +1580,11 @@ export function AiAgentWorkspace({
                     items={uploadedAttachmentItems}
                     maxCount={uploadedAttachmentItems.length}
                     onRemove={(file) => removeComposerAttachment(String(file.uid))}
-                    disabled={booting || isRequesting || uploadingAttachment}
+                    disabled={booting || isRequesting}
                     rootClassName="chat-attachment-list"
                   />
                 ) : null}
-                footer={(actions) => (
+                footer={(_actions, { components }) => (
                   <div className="chat-sender-toolbar">
                     <button
                       type="button"
@@ -1594,7 +1597,8 @@ export function AiAgentWorkspace({
                     <Attachments
                       rootClassName="chat-attachment-uploader"
                       beforeUpload={handleAttachmentUpload}
-                      disabled={booting || isRequesting || uploadingAttachment}
+                      disabled={booting || isRequesting}
+                      multiple
                       getDropContainer={() => composerShellRef.current}
                       placeholder={{
                         icon: <InboxOutlined />,
@@ -1624,7 +1628,9 @@ export function AiAgentWorkspace({
                       onSelectedModelIdChange={setSelectedModelId}
                       onAutoModelChange={setAutoModel}
                     />
-                    <div className="chat-sender-toolbar-actions">{actions}</div>
+                    <div className="chat-sender-toolbar-actions">
+                      {isRequesting ? <components.LoadingButton /> : <components.SendButton disabled={uploadingAttachmentCount > 0} />}
+                    </div>
                   </div>
                 )}
               />

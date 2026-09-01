@@ -43,7 +43,7 @@ export function InitialProductDocumentModal({
 }: InitialProductDocumentModalProps) {
   const [attachments, setAttachments] = useState<MessagePart[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PendingReferenceAttachment[]>([])
-  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [uploadingAttachmentCount, setUploadingAttachmentCount] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const pendingAttachmentsRef = useRef<PendingReferenceAttachment[]>([])
   const uploadSeedRef = useRef(0)
@@ -67,7 +67,7 @@ export function InitialProductDocumentModal({
     setPendingAttachments((current) => current.map((attachment) => (
       attachment.uid === uid ? { ...attachment, percent: 0, status: 'uploading' } : attachment
     )))
-    setUploadingAttachment(true)
+    setUploadingAttachmentCount((count) => count + 1)
     try {
       const uploaded = await uploadChatFile(file, (percent) => {
         setPendingAttachments((current) => current.map((attachment) => (
@@ -102,7 +102,7 @@ export function InitialProductDocumentModal({
         attachment.uid === uid ? { ...attachment, status: 'error' } : attachment
       )))
     } finally {
-      setUploadingAttachment(false)
+      setUploadingAttachmentCount((count) => Math.max(0, count - 1))
     }
   }
 
@@ -130,7 +130,7 @@ export function InitialProductDocumentModal({
 
   function retryAttachment(uid: string) {
     const attachment = pendingAttachments.find((item) => item.uid === uid)
-    if (attachment && !uploadingAttachment) {
+    if (attachment) {
       void uploadAttachment(attachment.file, uid)
     }
   }
@@ -156,7 +156,7 @@ export function InitialProductDocumentModal({
 
   function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
     const file = getClipboardImageFile(event.clipboardData)
-    if (!file || loading || submitting || uploadingAttachment) {
+    if (!file || loading || submitting) {
       return
     }
     event.preventDefault()
@@ -164,7 +164,7 @@ export function InitialProductDocumentModal({
   }
 
   async function handleStart() {
-    if (loading || submitting || uploadingAttachment) {
+    if (loading || submitting || uploadingAttachmentCount > 0) {
       return
     }
     setSubmitting(true)
@@ -178,7 +178,7 @@ export function InitialProductDocumentModal({
   }
 
   function handleCancel() {
-    if (loading || submitting || uploadingAttachment) {
+    if (loading || submitting || uploadingAttachmentCount > 0) {
       return
     }
     clearAttachments()
@@ -193,8 +193,8 @@ export function InitialProductDocumentModal({
       okText="开始生成"
       cancelText="取消"
       confirmLoading={loading || submitting}
-      okButtonProps={{ disabled: uploadingAttachment }}
-      cancelButtonProps={{ disabled: loading || submitting || uploadingAttachment }}
+      okButtonProps={{ disabled: uploadingAttachmentCount > 0 }}
+      cancelButtonProps={{ disabled: loading || submitting || uploadingAttachmentCount > 0 }}
       onOk={() => void handleStart()}
       onCancel={handleCancel}
     >
@@ -206,7 +206,8 @@ export function InitialProductDocumentModal({
           <Attachments
             rootClassName="initial-product-document-uploader"
             beforeUpload={handleAttachmentUpload}
-            disabled={loading || submitting || uploadingAttachment}
+            disabled={loading || submitting}
+            multiple
             getDropContainer={() => dropContainerRef.current}
             placeholder={{
               icon: <InboxOutlined />,
@@ -214,7 +215,7 @@ export function InitialProductDocumentModal({
               description: '支持点击上传或粘贴截图，单个文件最大 16 MiB',
             }}
           >
-            <Button icon={<PaperClipOutlined />} disabled={loading || submitting || uploadingAttachment}>
+            <Button icon={<PaperClipOutlined />} disabled={loading || submitting}>
               添加参考资料
             </Button>
           </Attachments>
@@ -225,12 +226,12 @@ export function InitialProductDocumentModal({
               ...attachment,
               tabIndex: attachment.status === 'error' ? 0 : undefined,
               description: attachment.status === 'error'
-                ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} disabled={uploadingAttachment} />
+                ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} />
                 : undefined,
             }))}
             maxCount={pendingAttachments.length}
             onRemove={(file) => removeAttachment(String(file.uid))}
-            disabled={loading || submitting || uploadingAttachment}
+            disabled={loading || submitting}
             rootClassName="initial-product-document-attachment-list"
           />
         ) : null}

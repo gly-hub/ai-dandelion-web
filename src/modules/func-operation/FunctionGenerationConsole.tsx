@@ -163,7 +163,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<MessagePart[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<PendingGenerationAttachment[]>([])
-  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [uploadingAttachmentCount, setUploadingAttachmentCount] = useState(0)
   const pendingAttachmentsRef = useRef<PendingGenerationAttachment[]>([])
   const uploadSeedRef = useRef(0)
   const dropContainerRef = useRef<HTMLDivElement | null>(null)
@@ -188,7 +188,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
     setPendingAttachments((current) => current.map((attachment) => (
       attachment.uid === uid ? { ...attachment, percent: 0, status: 'uploading' } : attachment
     )))
-    setUploadingAttachment(true)
+    setUploadingAttachmentCount((count) => count + 1)
     try {
       const uploaded = await uploadChatFile(file, (percent) => {
         setPendingAttachments((current) => current.map((attachment) => (
@@ -223,7 +223,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
         attachment.uid === uid ? { ...attachment, status: 'error' } : attachment
       )))
     } finally {
-      setUploadingAttachment(false)
+      setUploadingAttachmentCount((count) => Math.max(0, count - 1))
     }
   }
 
@@ -251,7 +251,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
 
   function retryAttachment(uid: string) {
     const attachment = pendingAttachments.find((item) => item.uid === uid)
-    if (attachment && !uploadingAttachment) {
+    if (attachment) {
       void uploadAttachment(attachment.file, uid)
     }
   }
@@ -277,7 +277,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
 
   function handleComposerPaste(event: ClipboardEvent<HTMLDivElement>) {
     const file = getClipboardImageFile(event.clipboardData)
-    if (!file || disabled || loading || uploadingAttachment) {
+    if (!file || disabled || loading) {
       return
     }
     event.preventDefault()
@@ -288,7 +288,7 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
     ...attachment,
     tabIndex: attachment.status === 'error' ? 0 : undefined,
     description: attachment.status === 'error'
-      ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} disabled={uploadingAttachment} />
+      ? <AttachmentUploadStatus onRetry={() => retryAttachment(attachment.uid)} />
       : undefined,
   }))
 
@@ -298,9 +298,12 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
         value={draft}
         onChange={setDraft}
         loading={loading}
-        disabled={disabled || uploadingAttachment}
+        disabled={disabled}
         onCancel={onAbort}
         onSubmit={(value) => {
+          if (uploadingAttachmentCount > 0) {
+            return
+          }
           const content = String(value).trim()
           if (!content && attachments.length === 0) {
             return
@@ -320,18 +323,19 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
               items={attachmentItems}
               maxCount={attachmentItems.length}
               onRemove={(file) => removeAttachment(String(file.uid))}
-              disabled={disabled || uploadingAttachment}
+              disabled={disabled}
               rootClassName="generation-attachment-list"
             />
           ) : null}
         </>
         ) : null}
-        footer={(actions) => (
+        footer={(_actions, { components }) => (
           <div className="chat-sender-toolbar generation-console-toolbar">
           <Attachments
             rootClassName="generation-attachment-uploader"
             beforeUpload={handleAttachmentUpload}
-            disabled={disabled || loading || uploadingAttachment}
+            disabled={disabled || loading}
+            multiple
             getDropContainer={() => dropContainerRef.current}
             placeholder={{
               icon: <InboxOutlined />,
@@ -354,7 +358,9 @@ const GenerationConsoleComposer = memo(function GenerationConsoleComposer({
               <Tag color="blue">{selectedModel.name}</Tag>
             </div>
           ) : <span />}
-          <div className="chat-sender-toolbar-actions">{actions}</div>
+          <div className="chat-sender-toolbar-actions">
+            {loading ? <components.LoadingButton /> : <components.SendButton disabled={uploadingAttachmentCount > 0} />}
+          </div>
           </div>
         )}
       />
