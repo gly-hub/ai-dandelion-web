@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons'
-import { App, Button, Form, Input, InputNumber, Select, Space, Spin } from 'antd'
-import { getAgentConfig, updateAgentConfig } from '../../lib/systemApi'
+import { App, Button, Form, Input, InputNumber, Select, Space, Spin, Switch } from 'antd'
+import { getAgentConfig, listAgentModels, updateAgentConfig } from '../../lib/systemApi'
 import { useNavMenus } from '../../contexts/NavMenuContext'
 
 type AgentConfigFormValues = {
   systemPrompt: string
   permissionMode: string
   maxTurns: number
+  imageToolEnabled: boolean
+  imageModelId: string
 }
 
 const PERMISSION_MODE_OPTIONS = [
@@ -22,6 +24,7 @@ export function AgentConfigManagementWorkspace() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(0)
+  const [imageModels, setImageModels] = useState<{ value: string; label: string }[]>([])
   const permissionMode = Form.useWatch('permissionMode', form)
   const canSave = hasPageButton('func-operation', 'agent-config', 'save')
 
@@ -33,7 +36,10 @@ export function AgentConfigManagementWorkspace() {
         systemPrompt: config.systemPrompt,
         permissionMode: config.permissionMode || 'bypassPermissions',
         maxTurns: config.maxTurns || 20,
+        imageToolEnabled: config.imageToolEnabled,
+        imageModelId: config.imageModelId,
       })
+      setImageModels((await listAgentModels()).filter((item) => item.type === 'image').map((item) => ({ value: item.id, label: `${item.name} / ${item.model}` })))
       setUpdatedAt(config.updatedAt)
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载系统配置失败')
@@ -58,6 +64,8 @@ export function AgentConfigManagementWorkspace() {
         systemPrompt: values.systemPrompt,
         permissionMode: values.permissionMode,
         maxTurns: values.maxTurns,
+        imageToolEnabled: values.imageToolEnabled,
+        imageModelId: values.imageModelId,
       })
       setUpdatedAt(config.updatedAt)
       message.success('系统配置已保存')
@@ -112,6 +120,14 @@ export function AgentConfigManagementWorkspace() {
                     className="agent-settings-textarea"
                   />
                 </Form.Item>
+              </div>
+
+              <div className="agent-settings-section">
+                <div className="agent-settings-section-head"><h3>系统工具</h3><p>启用后，Agent 可调用图片生成并自动上传到 CDN，也可上传其他模型生成的远程文件。</p></div>
+                <div className="agent-settings-field-grid">
+                  <Form.Item name="imageToolEnabled" label="图片生成工具" valuePropName="checked"><Switch /></Form.Item>
+                  <Form.Item name="imageModelId" label="图片模型"><Select allowClear options={imageModels} placeholder="选择图片模型" /></Form.Item>
+                </div>
               </div>
 
               <div className="agent-settings-section">

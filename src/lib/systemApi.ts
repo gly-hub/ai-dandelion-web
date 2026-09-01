@@ -325,6 +325,8 @@ export async function updateAgentConfig(input: {
   systemPrompt: string
   permissionMode: string
   maxTurns: number
+  imageToolEnabled?: boolean
+  imageModelId?: string
 }): Promise<AgentSystemConfig> {
   const data = await requestJSON<{ config?: unknown }>('/system/agent-config/', {
     method: 'PUT',
@@ -333,6 +335,8 @@ export async function updateAgentConfig(input: {
       systemPrompt: input.systemPrompt,
       permissionMode: input.permissionMode,
       maxTurns: input.maxTurns,
+      imageToolEnabled: Boolean(input.imageToolEnabled),
+      imageModelId: input.imageModelId || '',
     }),
   })
   return normalizeAgentSystemConfig(data.config)
@@ -388,6 +392,7 @@ export async function createAgentModel(input: {
   isDefault?: boolean
   sort?: number
   remark?: string
+  type?: string
 }): Promise<AgentModel> {
   const data = await requestJSON<{ model?: unknown }>('/system/agent-models/', {
     method: 'POST',
@@ -402,6 +407,7 @@ export async function createAgentModel(input: {
       isDefault: Boolean(input.isDefault),
       sort: input.sort ?? 0,
       remark: input.remark || '',
+      type: input.type || 'chat',
     }),
   })
   return normalizeAgentModel(data.model)
@@ -419,6 +425,7 @@ export async function updateAgentModel(
     isDefault?: boolean
     sort?: number
     remark?: string
+    type?: string
   },
 ): Promise<AgentModel> {
   const data = await requestJSON<{ model?: unknown }>(`/system/agent-models/${id}`, {
@@ -434,6 +441,7 @@ export async function updateAgentModel(
       isDefault: Boolean(input.isDefault),
       sort: input.sort ?? 0,
       remark: input.remark || '',
+      type: input.type || 'chat',
     }),
   })
   return normalizeAgentModel(data.model)
@@ -511,6 +519,7 @@ export function normalizeAgentModel(raw: unknown): AgentModel {
     remark: stringValue(data.remark),
     createdAt: numberValue(data.createdAt ?? data.created_at),
     updatedAt: numberValue(data.updatedAt ?? data.updated_at),
+    type: stringValue(data.type) || 'chat',
   }
 }
 
@@ -618,6 +627,8 @@ export function normalizeAgentSystemConfig(raw: unknown): AgentSystemConfig {
     permissionMode: stringValue(data.permissionMode ?? data.permission_mode) || 'bypassPermissions',
     maxTurns: numberValue(data.maxTurns ?? data.max_turns) || 20,
     updatedAt: numberValue(data.updatedAt ?? data.updated_at),
+    imageToolEnabled: Boolean(data.imageToolEnabled ?? data.image_tool_enabled),
+    imageModelId: stringValue(data.imageModelId ?? data.image_model_id),
   }
 }
 

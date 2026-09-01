@@ -7,7 +7,7 @@ import {
   ReloadOutlined,
   StopOutlined,
 } from '@ant-design/icons'
-import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Spin, Switch, Table, Tag } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Spin, Switch, Table, Tag, Tabs } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   createAgentModel,
@@ -36,6 +36,7 @@ type AgentModelFormValues = {
   isDefault: boolean
   sort: number
   remark?: string
+  type: string
 }
 
 export function AgentModelManagementWorkspace() {
@@ -47,6 +48,7 @@ export function AgentModelManagementWorkspace() {
   const [saving, setSaving] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<AgentModel | null>(null)
+  const [activeType, setActiveType] = useState('chat')
   const canCreate = hasPageButton('func-operation', 'agent-models', 'create')
   const canUpdate = hasPageButton('func-operation', 'agent-models', 'update')
   const canStatus = hasPageButton('func-operation', 'agent-models', 'status')
@@ -83,6 +85,7 @@ export function AgentModelManagementWorkspace() {
       isDefault: false,
       sort: 0,
       remark: '',
+      type: activeType,
     })
     setModalOpen(true)
   }
@@ -102,6 +105,7 @@ export function AgentModelManagementWorkspace() {
       isDefault: item.isDefault,
       sort: item.sort,
       remark: item.remark,
+      type: item.type || 'chat',
     })
     setModalOpen(true)
   }
@@ -125,6 +129,7 @@ export function AgentModelManagementWorkspace() {
         isDefault: values.isDefault,
         sort: values.sort,
         remark: values.remark,
+        type: values.type,
       }
       if (editingModel) {
         await updateAgentModel(editingModel.id, payload)
@@ -177,6 +182,7 @@ export function AgentModelManagementWorkspace() {
   const columns: ColumnsType<AgentModel> = [
     { title: '名称', dataIndex: 'name', key: 'name' },
     { title: '模型标识', dataIndex: 'model', key: 'model' },
+    { title: '类型', dataIndex: 'type', key: 'type', render: (value: string) => ({ chat: '对话', image: '图片', audio: '语音', video: '视频' }[value] || value) },
     { title: 'Base URL', dataIndex: 'baseUrl', key: 'baseUrl', ellipsis: true },
     {
       title: '状态',
@@ -238,7 +244,8 @@ export function AgentModelManagementWorkspace() {
 
       <div className="agent-settings-card agent-settings-table-card">
         <Spin spinning={loading}>
-          <Table rowKey="id" columns={columns} dataSource={models} pagination={false} />
+          <Tabs activeKey={activeType} onChange={setActiveType} items={[{key:'chat',label:'对话模型'},{key:'image',label:'图片模型'},{key:'audio',label:'语音模型'},{key:'video',label:'视频模型'}]} />
+          <Table rowKey="id" columns={columns} dataSource={models.filter((item) => (item.type || 'chat') === activeType)} pagination={false} />
         </Spin>
       </div>
 
@@ -265,6 +272,9 @@ export function AgentModelManagementWorkspace() {
               </Form.Item>
               <Form.Item name="model" label="模型标识" rules={[{ required: true, message: '请输入模型标识' }]}>
                 <Input placeholder="传给 SDK 的 model 参数" />
+              </Form.Item>
+              <Form.Item name="type" label="模型类型" rules={[{ required: true }]}>
+                <Select options={[{value:'chat',label:'对话'},{value:'image',label:'图片'},{value:'audio',label:'语音'},{value:'video',label:'视频'}]} />
               </Form.Item>
             </div>
             <Form.Item name="baseUrl" label="Base URL">
