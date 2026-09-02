@@ -1206,6 +1206,26 @@ body {
   white-space: pre;
 }
 
+.markdown-body .ant-image {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  max-height: min(480px, 70vh);
+  margin: 10px 0 14px;
+  overflow: hidden;
+}
+
+.markdown-body .markdown-image,
+.markdown-body .markdown-image img,
+.markdown-body .ant-image-img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: min(480px, 70vh);
+  object-fit: contain;
+}
+
 .collapsible-card {
   display: block;
   width: 100%;
