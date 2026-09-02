@@ -39,6 +39,10 @@ type AgentModelFormValues = {
   type: string
 }
 
+function modelTypeLabel(type: string) {
+  return ({ chat: '对话', image: '图片', audio: '语音', video: '视频' }[type] || '通用')
+}
+
 export function AgentModelManagementWorkspace() {
   const { message, modal } = App.useApp()
   const { hasPageButton } = useNavMenus()
@@ -49,6 +53,9 @@ export function AgentModelManagementWorkspace() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<AgentModel | null>(null)
   const [activeType, setActiveType] = useState('chat')
+  const formType = Form.useWatch('type', form) || activeType
+  const isChatModel = formType === 'chat'
+  const typeLabel = modelTypeLabel(formType)
   const canCreate = hasPageButton('func-operation', 'agent-models', 'create')
   const canUpdate = hasPageButton('func-operation', 'agent-models', 'update')
   const canStatus = hasPageButton('func-operation', 'agent-models', 'status')
@@ -230,7 +237,7 @@ export function AgentModelManagementWorkspace() {
         <div className="agent-settings-header-copy">
           <span className="agent-settings-eyebrow">AI Agent 管理</span>
           <h2>模型配置</h2>
-          <p>管理各模型的连接参数与思考配置，客户端可在对话中切换。</p>
+        <p>按模型类型管理连接参数；对话模型支持思考配置，其他模型使用各自的调用参数。</p>
         </div>
         <Space className="agent-settings-header-actions" wrap>
           <Button icon={<ReloadOutlined />} onClick={() => void loadModels()}>
@@ -251,7 +258,7 @@ export function AgentModelManagementWorkspace() {
 
       <Modal
         open={modalOpen}
-        title={editingModel ? '编辑模型配置' : '新建模型配置'}
+        title={`${editingModel ? '编辑' : '新建'}${typeLabel}模型配置`}
         okText={editingModel ? '保存' : '创建'}
         cancelText="取消"
         confirmLoading={saving}
@@ -268,24 +275,24 @@ export function AgentModelManagementWorkspace() {
             <h4 className="agent-model-modal-section-title">连接信息</h4>
             <div className="agent-model-modal-grid agent-model-modal-grid-2">
               <Form.Item name="name" label="展示名称" rules={[{ required: true, message: '请输入展示名称' }]}>
-                <Input placeholder="例如 DeepSeek V4 Flash" />
+                <Input placeholder={formType === 'image' ? '例如 GPT Image 1' : '例如 DeepSeek V4 Flash'} />
               </Form.Item>
               <Form.Item name="model" label="模型标识" rules={[{ required: true, message: '请输入模型标识' }]}>
-                <Input placeholder="传给 SDK 的 model 参数" />
+                <Input placeholder={formType === 'image' ? '传给图片接口的 model 参数' : '传给 SDK 的 model 参数'} />
               </Form.Item>
               <Form.Item name="type" label="模型类型" rules={[{ required: true }]}>
-                <Select options={[{value:'chat',label:'对话'},{value:'image',label:'图片'},{value:'audio',label:'语音'},{value:'video',label:'视频'}]} />
+                <Select disabled={Boolean(editingModel)} options={[{value:'chat',label:'对话'},{value:'image',label:'图片'},{value:'audio',label:'语音'},{value:'video',label:'视频'}]} />
               </Form.Item>
             </div>
             <Form.Item name="baseUrl" label="Base URL">
-              <Input placeholder="https://api.example.com/anthropic" />
+              <Input placeholder={formType === 'image' ? '例如 https://api.openai.com/v1' : 'https://api.example.com/anthropic'} />
             </Form.Item>
             <Form.Item name="authToken" label="Auth Token">
               <Input.Password placeholder={editingModel ? '留空表示不修改' : 'sk-...'} />
             </Form.Item>
           </section>
 
-          <section className="agent-model-modal-section">
+          {isChatModel ? <section className="agent-model-modal-section">
             <h4 className="agent-model-modal-section-title">思考配置</h4>
             <div className="agent-model-modal-grid agent-model-modal-grid-4">
               <Form.Item name="thinkMode" label="思考模式">
@@ -312,7 +319,14 @@ export function AgentModelManagementWorkspace() {
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
             </div>
-          </section>
+          </section> : <section className="agent-model-modal-section">
+            <h4 className="agent-model-modal-section-title">{typeLabel}模型参数</h4>
+            <p className="agent-model-modal-section-hint">
+              {formType === 'image'
+                ? '图片模型按 OpenAI Images API 兼容格式调用，生成结果会自动上传到 CDN。'
+                : `${typeLabel}模型暂不需要对话思考参数，后续接入对应调用协议时再补充专属参数。`}
+            </p>
+          </section>}
 
           <section className="agent-model-modal-section">
             <h4 className="agent-model-modal-section-title">发布设置</h4>
