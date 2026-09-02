@@ -6,7 +6,7 @@ const AUTO_MODEL_STORAGE_KEY = 'ai-agent:auto-model'
 
 export async function listAgentModelOptions(): Promise<AgentModelOption[]> {
   const data = await requestJSON<{ models?: unknown[] }>('/ai-agent/models')
-  return Array.isArray(data.models) ? data.models.map(normalizeAgentModelOption) : []
+  return Array.isArray(data.models) ? data.models.map(normalizeAgentModelOption).filter((item) => item.type === 'chat') : []
 }
 
 export function getSelectedAgentModelId(): string {
@@ -71,6 +71,7 @@ function normalizeAgentModelOption(raw: unknown): AgentModelOption {
     name: stringValue(data.name),
     model: stringValue(data.model),
     isDefault: Boolean(data.isDefault ?? data.is_default),
+    type: stringValue(data.type) || 'chat',
   }
 }
 

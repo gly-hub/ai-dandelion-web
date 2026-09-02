@@ -604,6 +604,7 @@ export interface AgentModel {
   remark: string
   createdAt: number
   updatedAt: number
+  type: 'chat' | 'image' | 'audio' | 'video' | string
 }
 
 export interface AgentSystemConfig {
@@ -611,6 +612,8 @@ export interface AgentSystemConfig {
   permissionMode: string
   maxTurns: number
   updatedAt: number
+  imageToolEnabled: boolean
+  imageModelId: string
 }
 
 export type AgentSessionConfigType = 'func_product' | 'func_technical' | 'func_generation'
@@ -632,6 +635,7 @@ export interface AgentModelOption {
   name: string
   model: string
   isDefault: boolean
+  type: string
 }
 
 export const AGENT_BOT_STATUS_ENABLED = 1

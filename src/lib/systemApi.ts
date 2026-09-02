@@ -325,6 +325,8 @@ export async function updateAgentConfig(input: {
   systemPrompt: string
   permissionMode: string
   maxTurns: number
+  imageToolEnabled?: boolean
+  imageModelId?: string
 }): Promise<AgentSystemConfig> {
   const data = await requestJSON<{ config?: unknown }>('/system/agent-config/', {
     method: 'PUT',
@@ -333,6 +335,8 @@ export async function updateAgentConfig(input: {
       systemPrompt: input.systemPrompt,
       permissionMode: input.permissionMode,
       maxTurns: input.maxTurns,
+      imageToolEnabled: Boolean(input.imageToolEnabled),
+      imageModelId: input.imageModelId || '',
     }),
   })
   return normalizeAgentSystemConfig(data.config)
@@ -388,6 +392,7 @@ export async function createAgentModel(input: {
   isDefault?: boolean
   sort?: number
   remark?: string
+  type?: string
 }): Promise<AgentModel> {
   const data = await requestJSON<{ model?: unknown }>('/system/agent-models/', {
     method: 'POST',
@@ -402,6 +407,7 @@ export async function createAgentModel(input: {
       isDefault: Boolean(input.isDefault),
       sort: input.sort ?? 0,
       remark: input.remark || '',
+      type: input.type || 'chat',
     }),
   })
   return normalizeAgentModel(data.model)
@@ -419,6 +425,7 @@ export async function updateAgentModel(
     isDefault?: boolean
     sort?: number
     remark?: string
+    type?: string
   },
 ): Promise<AgentModel> {
   const data = await requestJSON<{ model?: unknown }>(`/system/agent-models/${id}`, {
@@ -434,6 +441,7 @@ export async function updateAgentModel(
       isDefault: Boolean(input.isDefault),
       sort: input.sort ?? 0,
       remark: input.remark || '',
+      type: input.type || 'chat',
     }),
   })
   return normalizeAgentModel(data.model)
@@ -511,6 +519,7 @@ export function normalizeAgentModel(raw: unknown): AgentModel {
     remark: stringValue(data.remark),
     createdAt: numberValue(data.createdAt ?? data.created_at),
     updatedAt: numberValue(data.updatedAt ?? data.updated_at),
+    type: stringValue(data.type) || 'chat',
   }
 }
 
@@ -618,6 +627,8 @@ export function normalizeAgentSystemConfig(raw: unknown): AgentSystemConfig {
     permissionMode: stringValue(data.permissionMode ?? data.permission_mode) || 'bypassPermissions',
     maxTurns: numberValue(data.maxTurns ?? data.max_turns) || 20,
     updatedAt: numberValue(data.updatedAt ?? data.updated_at),
+    imageToolEnabled: Boolean(data.imageToolEnabled ?? data.image_tool_enabled),
+    imageModelId: stringValue(data.imageModelId ?? data.image_model_id),
   }
 }
 
@@ -626,7 +637,7 @@ export const AGENT_SESSION_CONFIG_DEFAULTS: AgentSessionConfig[] = [
     sessionType: 'func_product',
     name: '产品方案',
     description: '用于功能搭建的产品目标、页面范围与业务流程梳理。',
-    systemPrompt: '你是产品方案生成助手。请围绕用户要搭建的功能，输出清晰的目标、页面范围、字段与业务流程，并保持可落地。',
+    systemPrompt: '你是功能搭建流程中的产品负责人。你的任务是把用户的想法整理成可评审、可实现、可验收的产品需求，不写代码、不设计数据库和具体接口。只依据用户输入和已有业务上下文，不凭空添加规则、角色、字段或外部服务；缺少会改变范围的关键信息时先澄清。围绕真实操作闭环明确页面、业务对象、字段、筛选、状态流转、权限边界及加载/空/错误状态，区分只读操作与受控操作。输出结构固定为：业务目标与成功标准、目标用户与场景、核心流程、页面与交互、业务对象与字段、操作与权限、状态与异常、范围边界、验收标准。不要输出 SQL、代码、伪造 API 地址、密钥或实现细节。',
     permissionMode: 'bypassPermissions',
     maxTurns: 20,
     modelId: '',
@@ -637,7 +648,7 @@ export const AGENT_SESSION_CONFIG_DEFAULTS: AgentSessionConfig[] = [
     sessionType: 'func_technical',
     name: '技术方案',
     description: '用于基于产品方案设计数据模型、接口契约和实现计划。',
-    systemPrompt: '你是技术方案生成助手。请基于已确认的产品方案，输出数据模型、接口设计、权限动作和实现步骤，避免引入不必要复杂度。',
+    systemPrompt: '你是功能搭建流程中的技术负责人。请基于已采用的产品方案，产出供页面生成直接执行的实现合同，不写最终业务代码。不要改变产品范围、字段语义或流程；明确页面组件、数据模型、查询、状态变更 action、请求/响应、校验、权限、异常恢复和响应式布局。所有 action 名称在页面、API、后端 dispatch、manifest 和 App Skill 中保持一致；外部接口只能使用已有 API 客户端，公共选项只能引用明确 config_key。业务请求使用 context.invokeData 或 context.invoke，说明 iframe 滚动、权限透传、日志和脱敏要求。输出模块拆分、页面与组件、数据模型、API/action、状态校验、异常恢复、权限、验收和可观测性。',
     permissionMode: 'bypassPermissions',
     maxTurns: 20,
     modelId: '',
@@ -648,7 +659,7 @@ export const AGENT_SESSION_CONFIG_DEFAULTS: AgentSessionConfig[] = [
     sessionType: 'func_generation',
     name: '页面生成',
     description: '用于根据产品与技术方案生成、修复和刷新可操作页面。',
-    systemPrompt: '你是功能页面生成助手。请根据已确认的产品方案和技术方案生成可运行页面，优先保证业务动作完整、布局稳定、交互清晰。',
+    systemPrompt: '你是功能搭建流程中的资深实现工程师。请根据已采用的产品方案和技术方案，生成或修改真正可操作的业务页面与后端能力，不要把方案文字拼成说明页。先读取文档并检查现有应用，严格遵守字段、action、权限和响应合同；完整实现真实业务闭环、加载/空/校验/错误/成功状态，不用静态假数据或占位按钮掩盖未完成能力。业务请求只能通过 context.invokeData 或 context.invoke，manifest.actions 的受控操作必须在所有界面调用 context.can 并在事件中再次校验。适配 390x844、768x1024 和桌面端，避免固定宽度、横向溢出、文字重叠和 iframe 滚动问题。完成前检查导入导出、权限、action 对齐、错误恢复和响应式布局，并运行构建或自检；未实际验证不得声称完成。',
     permissionMode: 'bypassPermissions',
     maxTurns: 30,
     modelId: '',
